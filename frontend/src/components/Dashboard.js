@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRecentMeasurements, getISPComparison } from '../services/api';
+import { getRecentMeasurements, getISPComparison, runTestNow } from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import './Dashboard.css';
 
@@ -7,6 +7,7 @@ function Dashboard() {
   const [measurements, setMeasurements] = useState([]);
   const [ispData, setIspData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -29,6 +30,17 @@ function Dashboard() {
     }
   };
 
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      await runTestNow();
+      await fetchData();
+    } catch (error) {
+      console.error('Error running test:', error);
+    }
+    setTesting(false);
+  };
+
   if (loading) return <div className="loading">Loading...</div>;
 
   const chartData = measurements.map(m => ({
@@ -40,7 +52,16 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <h1>Internet Stability Dashboard</h1>
+      <div className="dashboard-header">
+        <h1>Internet Stability Dashboard</h1>
+        <button 
+          className="test-button" 
+          onClick={runTest} 
+          disabled={testing}
+        >
+          {testing ? 'Testing...' : 'Run Test Now'}
+        </button>
+      </div>
       
       <div className="stats-grid">
         <div className="stat-card">
