@@ -20,9 +20,10 @@ build/
 *.db
 *.sqlite3
 
-# IDE
+# IDE / AI Tools
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 

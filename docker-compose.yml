@@ -1,36 +1,45 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:14
-    environment:
-      POSTGRES_DB: internet_tracker
-      POSTGRES_USER: tracker_user
-      POSTGRES_PASSWORD: tracker_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://tracker_user:tracker_pass@postgres:5432/internet_tracker
-    depends_on:
-      - postgres
-    volumes:
-      - ./backend:/app
+      TURSO_DB_URL:          ${TURSO_DB_URL}
+      TURSO_AUTH_TOKEN:      ${TURSO_AUTH_TOKEN}
+      SECRET_KEY:            ${SECRET_KEY:-internet-stability-tracker-secret}
+      ENVIRONMENT:           ${ENVIRONMENT:-production}
+      SPEED_TEST_INTERVAL:   ${SPEED_TEST_INTERVAL:-300}
+      OUTAGE_THRESHOLD_MBPS: ${OUTAGE_THRESHOLD_MBPS:-1.0}
+      CORS_ORIGINS:          '["http://localhost","http://localhost:80"]'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
+  # ── React Frontend served via nginx ─────────────────────────────────────────
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: /api
     ports:
-      - "3000:3000"
+      - "80:80"
     depends_on:
-      - backend
-    volumes:
-      - ./frontend:/app
-
-volumes:
-  postgres_data:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

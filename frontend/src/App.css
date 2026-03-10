@@ -1,38 +1,12 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Global overrides — MUI handles component styling via theme.js */
+
+/* Leaflet z-index fix inside MUI layouts */
+.leaflet-container {
+  z-index: 0;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-  background: #f5f5f5;
-}
-
-.App {
-  min-height: 100vh;
-}
-
-.navbar {
-  background: #2c3e50;
-  color: white;
-  padding: 1rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.nav-links {
-  display: flex;
-  gap: 2rem;
-}
-
-.nav-links a {
-  color: white;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.nav-links a:hover {
-  color: #3498db;
+/* Leaflet popup styling */
+.leaflet-popup-content {
+  margin: 12px 16px;
+  font-family: 'Inter', 'Roboto', sans-serif;
 }
