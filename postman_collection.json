@@ -1,17 +1,23 @@
 {
   "info": {
-    "name": "Internet Stability Tracker API",
-    "description": "Complete API collection for the Internet Stability Tracker — community network monitoring platform.\n\n**Base URL**: `http://localhost:8000/api` (dev) or your Fly.io URL.\n\nSet the `base_url` collection variable to switch environments.",
-    "version": "1.0.0",
-    "_postman_id": "ist-api-v1",
+    "name": "Internet Stability Tracker API v2",
+    "description": "Complete API collection for the Internet Stability Tracker — community network monitoring platform.\n\n## Live Production URL\nAll requests default to the **live Fly.io deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP |\n| `POST /reports` | 20 req / 60 s per IP |\n| All others | 120 req / 60 s per IP |",
+    "version": "2.0.0",
+    "_postman_id": "ist-api-v2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:8000/api",
+      "value": "https://backend-cold-butterfly-9535.fly.dev/api",
       "type": "string",
-      "description": "Change to your Fly.io URL for production: https://internet-stability-tracker.fly.dev/api"
+      "description": "Production Fly.io URL. Change to http://localhost:8000/api for local development."
+    },
+    {
+      "key": "report_id",
+      "value": "1",
+      "type": "string",
+      "description": "ID of a community report — update after creating one via POST /reports"
     }
   ],
   "item": [
@@ -27,14 +33,14 @@
               "host": ["{{base_url}}"],
               "path": ["..", "health"]
             },
-            "description": "Returns service status, UTC timestamp, and current environment."
+            "description": "Returns service status, UTC timestamp, and current environment. Also accepts HEAD (used by Fly.io health probes)."
           },
           "response": [
             {
               "name": "Healthy",
               "status": "OK",
               "code": 200,
-              "body": "{\"status\":\"healthy\",\"timestamp\":\"2026-03-11T14:54:29.327197+00:00\",\"environment\":\"development\"}"
+              "body": "{\"status\":\"healthy\",\"timestamp\":\"2026-03-11T14:54:29.327197+00:00\",\"environment\":\"production\"}"
             }
           ]
         }
@@ -57,7 +63,7 @@
                 {"key": "lon", "value": "30.0619", "description": "Longitude (-180 to 180)"}
               ]
             },
-            "description": "Triggers a real speed test (speedtest-cli). Rate limited: 5 req/60s per IP.\n\nAll query params are optional — omit for location-less test."
+            "description": "Triggers a real speed test (speedtest-cli). Takes 10–30 seconds to complete.\n\n**Rate limited**: 5 req / 60 s per IP.\n\nAll query params are optional."
           },
           "response": [
             {
@@ -89,7 +95,7 @@
               "path": ["measurements"],
               "query": [
                 {"key": "skip",  "value": "0",  "description": "Offset (pagination)"},
-                {"key": "limit", "value": "50", "description": "Max records returned (1-500)"}
+                {"key": "limit", "value": "50", "description": "Max records returned (1–500)"}
               ]
             },
             "description": "Paginated list of speed test records, most recent first."
@@ -104,10 +110,10 @@
               "host": ["{{base_url}}"],
               "path": ["measurements", "recent"],
               "query": [
-                {"key": "hours", "value": "24", "description": "Time window in hours (1-168)"}
+                {"key": "hours", "value": "24", "description": "Time window in hours (1–168). Use 168 for 7-day view."}
               ]
             },
-            "description": "Measurements within the last N hours. Use hours=168 for 7-day view."
+            "description": "Measurements within the last N hours."
           }
         },
         {
@@ -136,7 +142,7 @@
       "name": "Statistics",
       "item": [
         {
-          "name": "Aggregated stats (24h)",
+          "name": "Aggregated stats",
           "request": {
             "method": "GET",
             "url": {
@@ -144,10 +150,10 @@
               "host": ["{{base_url}}"],
               "path": ["stats"],
               "query": [
-                {"key": "hours", "value": "24", "description": "Time window in hours (1-168)"}
+                {"key": "hours", "value": "24", "description": "Time window in hours (1–168)"}
               ]
             },
-            "description": "Total tests, outage count, uptime %, average download/upload/ping for the time window."
+            "description": "Total tests, outage count, uptime %, average download / upload / ping for the time window."
           },
           "response": [
             {
@@ -155,6 +161,61 @@
               "status": "OK",
               "code": 200,
               "body": "{\"total_tests\":10,\"total_outages\":0,\"uptime_percentage\":100.0,\"avg_download_mbps\":187.5,\"avg_upload_mbps\":19.8,\"avg_ping_ms\":10.9,\"last_test_at\":\"2026-03-11T14:55:00\",\"hours\":24}"
+            }
+          ]
+        },
+        {
+          "name": "Network Quality Score",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quality-score?hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["quality-score"],
+              "query": [
+                {"key": "hours", "value": "24", "description": "Time window in hours (1–168)"}
+              ]
+            },
+            "description": "Composite 0–100 quality score with letter grade (A+/A/B/C/D/F).\n\n**Scoring formula**:\n- Speed score: 0–40 pts (download vs 200 Mbps benchmark)\n- Upload score: 0–20 pts (upload vs 50 Mbps)\n- Ping score: 0–20 pts (lower ping = higher score)\n- Uptime score: 0–20 pts (uptime % contribution)\n\n**Grades**: A+ ≥95, A ≥85, B ≥70, C ≥55, D ≥40, F <40"
+          },
+          "response": [
+            {
+              "name": "Score A",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"score\":81.5,\"grade\":\"A\",\"label\":\"Very Good\",\"breakdown\":{\"speed_score\":36.5,\"upload_score\":6.7,\"ping_score\":18.4,\"uptime_score\":20.0,\"avg_download\":91.13,\"avg_upload\":16.8,\"avg_ping\":24.54,\"uptime_pct\":100.0},\"hours\":24}"
+            },
+            {
+              "name": "No data",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"score\":0,\"grade\":\"N/A\",\"label\":\"No Data\",\"breakdown\":{},\"hours\":24}"
+            }
+          ]
+        },
+        {
+          "name": "Global Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["status"]
+            },
+            "description": "Overall platform status: `healthy` / `degraded` / `outage`.\n\nIncludes active outage count, open community reports, 24h averages, and a 7-day daily summary used by the Status Page."
+          },
+          "response": [
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\":\"healthy\",\"active_outages\":0,\"open_reports\":0,\"avg_download_24h\":91.13,\"uptime_pct_24h\":100.0,\"total_measurements_7d\":10,\"daily_summary\":[{\"date\":\"2026-03-11\",\"tests\":2,\"outages\":0,\"uptime_pct\":100.0,\"avg_download\":91.13}],\"checked_at\":\"2026-03-11T18:31:22.951925\"}"
+            },
+            {
+              "name": "Degraded",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\":\"degraded\",\"active_outages\":1,\"open_reports\":3,\"avg_download_24h\":12.5,\"uptime_pct_24h\":87.0,\"total_measurements_7d\":48,\"daily_summary\":[],\"checked_at\":\"2026-03-11T19:00:00.000000\"}"
             }
           ]
         }
@@ -182,6 +243,32 @@
               "body": "{\"current_outage\":false,\"outage_count_48h\":0,\"recent_outages\":[]}"
             }
           ]
+        },
+        {
+          "name": "Outage Confidence Score",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/outage-confidence",
+              "host": ["{{base_url}}"],
+              "path": ["outage-confidence"]
+            },
+            "description": "Smart confidence score (0–100%) for whether the current network state is a real outage vs a brief blip.\n\nFactors:\n- Recent measurement speeds vs threshold\n- Community report density in the last hour\n- Number of consecutive low-speed readings"
+          },
+          "response": [
+            {
+              "name": "No outage",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"confidence\":0,\"is_likely_outage\":false,\"factors\":{\"speed_factor\":0,\"report_factor\":0,\"consecutive_factor\":0},\"recent_measurements\":5,\"recent_reports\":0}"
+            },
+            {
+              "name": "High confidence outage",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"confidence\":87,\"is_likely_outage\":true,\"factors\":{\"speed_factor\":50,\"report_factor\":22,\"consecutive_factor\":15},\"recent_measurements\":8,\"recent_reports\":4}"
+            }
+          ]
         }
       ]
     },
@@ -197,10 +284,10 @@
               "host": ["{{base_url}}"],
               "path": ["outages"],
               "query": [
-                {"key": "limit", "value": "50", "description": "Max records (1-200)"}
+                {"key": "limit", "value": "50", "description": "Max records (1–200)"}
               ]
             },
-            "description": "Individual speed test records where is_outage=true."
+            "description": "Individual speed test records where `is_outage=true`."
           }
         },
         {
@@ -212,12 +299,35 @@
               "host": ["{{base_url}}"],
               "path": ["outage-events"],
               "query": [
-                {"key": "limit",         "value": "50",    "description": "Max records (1-200)"},
-                {"key": "resolved_only", "value": "false", "description": "Set true to return only resolved events"}
+                {"key": "limit",         "value": "50",    "description": "Max records (1–200)"},
+                {"key": "resolved_only", "value": "false", "description": "true = only resolved events"}
               ]
             },
-            "description": "Structured outage events with computed duration_minutes and severity (critical/high/medium)."
+            "description": "Structured outage events with computed `duration_minutes` and `severity` (critical / high / medium)."
           }
+        },
+        {
+          "name": "Timeline",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/timeline?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["timeline"],
+              "query": [
+                {"key": "days", "value": "30", "description": "Number of days to look back (1–60)"}
+              ]
+            },
+            "description": "Chronological event timeline grouped by date.\n\nEvent types: `outage` (red), `degradation` (orange), `recovery` (green).\n\nUsed by the Timeline page — shows duration, avg speed, severity badge, and resolved status."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"days\":30,\"total_events\":3,\"events\":[{\"id\":1,\"type\":\"outage\",\"severity\":\"critical\",\"started_at\":\"2026-03-10T08:00:00\",\"ended_at\":\"2026-03-10T08:45:00\",\"duration_minutes\":45,\"isp\":\"MTN Rwanda\",\"location\":\"Kigali\",\"is_resolved\":true,\"avg_download\":0.1,\"date\":\"2026-03-10\"}]}"
+            }
+          ]
         }
       ]
     },
@@ -245,7 +355,7 @@
           ]
         },
         {
-          "name": "ISP reliability scores (7d)",
+          "name": "ISP reliability scores",
           "request": {
             "method": "GET",
             "url": {
@@ -253,7 +363,7 @@
               "host": ["{{base_url}}"],
               "path": ["isp-reliability"],
               "query": [
-                {"key": "hours", "value": "168", "description": "Time window — 24h, 168h (7d), or up to 168h max"}
+                {"key": "hours", "value": "168", "description": "Time window — 24 / 72 / 168 hours"}
               ]
             },
             "description": "Per-ISP uptime %, averages and letter grade (A+/A/B/C/D/F). Sorted by uptime descending."
@@ -264,6 +374,29 @@
               "status": "OK",
               "code": 200,
               "body": "[{\"isp\":\"GVA-Canalbox\",\"total_tests\":10,\"outage_tests\":0,\"uptime_pct\":100.0,\"avg_download\":187.5,\"avg_upload\":19.8,\"avg_ping\":10.9,\"grade\":\"A+\"}]"
+            }
+          ]
+        },
+        {
+          "name": "ISP Rankings (weighted score)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/isp-rankings?hours=168",
+              "host": ["{{base_url}}"],
+              "path": ["isp-rankings"],
+              "query": [
+                {"key": "hours", "value": "168", "description": "Time window — 24 / 72 / 168 hours"}
+              ]
+            },
+            "description": "ISP leaderboard sorted by composite weighted score (0–100).\n\n**Scoring weights**:\n- Uptime: 40 pts\n- Download speed: 25 pts\n- Upload speed: 15 pts\n- Ping: 10 pts\n- Community reports penalty: −10 pts\n\nReturns rank position, medal tier, and score breakdown."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "[{\"rank\":1,\"isp\":\"GVA-Canalbox\",\"score\":87.5,\"uptime_pts\":40,\"download_pts\":22,\"upload_pts\":10,\"ping_pts\":8,\"report_penalty\":0,\"uptime_pct\":100.0,\"avg_download\":187.5,\"avg_upload\":19.8,\"avg_ping\":10.9,\"report_count\":0,\"grade\":\"A+\",\"total_tests\":10}]"
             }
           ]
         }
@@ -282,9 +415,10 @@
               "path": ["reports"],
               "query": [
                 {"key": "skip",  "value": "0",  "description": "Offset"},
-                {"key": "limit", "value": "50", "description": "Max records (1-500)"}
+                {"key": "limit", "value": "50", "description": "Max records (1–500)"}
               ]
-            }
+            },
+            "description": "All community-submitted reports. Includes `confirmations`, `rejections`, and `status` (pending / confirmed / resolved)."
           }
         },
         {
@@ -302,20 +436,86 @@
               "raw": "{\n  \"isp\": \"MTN Rwanda\",\n  \"location\": \"Kigali, Kimironko\",\n  \"latitude\": -1.9441,\n  \"longitude\": 30.0619,\n  \"issue_type\": \"outage\",\n  \"description\": \"Complete loss of connectivity since 09:00 — no signal on LTE or fibre backup.\"\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Submit a crowd-sourced network issue.\n\n**issue_type** must be one of: `outage` | `slow` | `intermittent` | `other`\n\nRate limited: 20 req/60s per IP."
+            "description": "Submit a crowd-sourced network issue.\n\n**issue_type** must be one of: `outage` | `slow` | `intermittent` | `other`\n\n**Rate limited**: 20 req / 60 s per IP."
           },
           "response": [
             {
               "name": "Created",
               "status": "Created",
               "code": 201,
-              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss of connectivity since 09:00 — no signal on LTE or fibre backup.\"}"
+              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss of connectivity since 09:00 — no signal on LTE or fibre backup.\",\"status\":\"pending\",\"confirmations\":0,\"rejections\":0}"
             },
             {
               "name": "Validation Error",
               "status": "Unprocessable Entity",
               "code": 422,
               "body": "{\"detail\":[{\"loc\":[\"body\",\"issue_type\"],\"msg\":\"issue_type must be one of {'outage', 'slow', 'intermittent', 'other'}\",\"type\":\"value_error\"}]}"
+            }
+          ]
+        },
+        {
+          "name": "Get report by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "{{report_id}}"]
+            },
+            "description": "Get a single community report including `confirmations`, `rejections`, and `status`.\n\nUpdate the `report_id` collection variable after creating a report."
+          },
+          "response": [
+            {
+              "name": "Found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss.\",\"status\":\"confirmed\",\"confirmations\":3,\"rejections\":0}"
+            },
+            {
+              "name": "Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\"detail\":\"Report not found\"}"
+            }
+          ]
+        },
+        {
+          "name": "Confirm report",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "{{report_id}}", "confirm"]
+            },
+            "description": "Upvote a community report — increments `confirmations`.\n\nWhen `confirmations` reaches 3, `status` is automatically set to `confirmed`.\n\nUpdate the `report_id` collection variable to target a specific report."
+          },
+          "response": [
+            {
+              "name": "Confirmed",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss.\",\"status\":\"confirmed\",\"confirmations\":3,\"rejections\":0}"
+            }
+          ]
+        },
+        {
+          "name": "Reject report",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}/reject",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "{{report_id}}", "reject"]
+            },
+            "description": "Downvote a community report — increments `rejections`.\n\nWhen `rejections` reaches 3, `status` is automatically set to `resolved`.\n\nUpdate the `report_id` collection variable to target a specific report."
+          },
+          "response": [
+            {
+              "name": "Rejected",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss.\",\"status\":\"resolved\",\"confirmations\":0,\"rejections\":3}"
             }
           ]
         }
@@ -333,7 +533,7 @@
               "host": ["{{base_url}}"],
               "path": ["network-usage"]
             },
-            "description": "1-second bandwidth sample (download_mbps / upload_mbps) plus a list of processes with active ESTABLISHED TCP connections.\n\n⏱ This call takes ~1 second to complete (intentional — needed for the bandwidth sample)."
+            "description": "1-second bandwidth sample (download_mbps / upload_mbps) plus a list of processes with active ESTABLISHED TCP connections.\n\n⏱ This call takes ~1 second to complete — intentional, needed for the bandwidth sample."
           },
           "response": [
             {
@@ -343,6 +543,81 @@
               "body": "{\"download_mbps\":2.45,\"upload_mbps\":0.12,\"total_sent_gb\":1.234,\"total_recv_gb\":8.567,\"apps\":[{\"name\":\"chrome\",\"pid\":12345,\"connections\":14,\"remote_addresses\":[\"142.250.x.x\"]},{\"name\":\"code\",\"pid\":23456,\"connections\":3,\"remote_addresses\":[\"20.190.x.x\"]}],\"sampled_at\":\"2026-03-11T14:55:30.123456\"}"
             }
           ]
+        },
+        {
+          "name": "Network Diagnostics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/diagnostics",
+              "host": ["{{base_url}}"],
+              "path": ["diagnostics"]
+            },
+            "description": "Runs live DNS resolution + HTTP latency checks against 4 well-known targets:\n- Google DNS (8.8.8.8)\n- Cloudflare DNS (1.1.1.1)\n- google.com\n- cloudflare.com\n\n⏱ Takes 2–5 seconds to complete — all checks run in parallel.\n\nReturns per-target latency in ms, reachability flag, and summary averages."
+          },
+          "response": [
+            {
+              "name": "All reachable",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"dns_avg_ms\":12.3,\"http_avg_ms\":45.6,\"reachable_count\":4,\"targets\":[{\"name\":\"Google DNS\",\"host\":\"8.8.8.8\",\"type\":\"dns\",\"latency_ms\":11.2,\"reachable\":true},{\"name\":\"Cloudflare DNS\",\"host\":\"1.1.1.1\",\"type\":\"dns\",\"latency_ms\":13.4,\"reachable\":true},{\"name\":\"Google\",\"host\":\"google.com\",\"type\":\"http\",\"latency_ms\":42.1,\"reachable\":true},{\"name\":\"Cloudflare\",\"host\":\"cloudflare.com\",\"type\":\"http\",\"latency_ms\":49.1,\"reachable\":true}],\"checked_at\":\"2026-03-11T19:00:00\"}"
+            },
+            {
+              "name": "Partial outage",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"dns_avg_ms\":null,\"http_avg_ms\":null,\"reachable_count\":0,\"targets\":[{\"name\":\"Google DNS\",\"host\":\"8.8.8.8\",\"type\":\"dns\",\"latency_ms\":null,\"reachable\":false},{\"name\":\"Cloudflare DNS\",\"host\":\"1.1.1.1\",\"type\":\"dns\",\"latency_ms\":null,\"reachable\":false},{\"name\":\"Google\",\"host\":\"google.com\",\"type\":\"http\",\"latency_ms\":null,\"reachable\":false},{\"name\":\"Cloudflare\",\"host\":\"cloudflare.com\",\"type\":\"http\",\"latency_ms\":null,\"reachable\":false}],\"checked_at\":\"2026-03-11T19:00:00\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AI Insights",
+      "item": [
+        {
+          "name": "AI Insights (7d)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/ai-insights?hours=168",
+              "host": ["{{base_url}}"],
+              "path": ["ai-insights"],
+              "query": [
+                {"key": "hours", "value": "168", "description": "Time window — 24 / 72 / 168 hours"}
+              ]
+            },
+            "description": "Statistical pattern analysis of network data — no ML required, uses pure Python statistics.\n\n**Returns**:\n- `trend`: `improving` / `degrading` / `stable` / `insufficient_data` + % change\n- `insights`: list of detected patterns (congestion windows, anomalies, optimal times)\n- `hourly_averages`: per-hour-of-day average download speed (0–23)\n- `best_hours` / `peak_congestion_hours`: top hours by performance\n- `overall_avg_download`: mean download over the window\n\nRequires ≥10 data points to generate insights."
+          },
+          "response": [
+            {
+              "name": "Sufficient data",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"data_points\":48,\"hours\":168,\"trend\":\"stable\",\"trend_pct\":0,\"overall_avg_download\":85.4,\"hourly_averages\":{\"8\":92.1,\"9\":88.3,\"18\":61.2,\"19\":58.7,\"22\":95.0},\"best_hours\":[22,8,9],\"peak_congestion_hours\":[19,18],\"insights\":[{\"type\":\"congestion\",\"severity\":\"warning\",\"title\":\"Evening Congestion Detected\",\"message\":\"Download speeds drop 35% during 18:00–20:00 vs your daily average. Consider scheduling large downloads outside peak hours.\",\"data\":{\"hours\":[18,19]}},{\"type\":\"optimal_time\",\"severity\":\"info\",\"title\":\"Best Time to Download\",\"message\":\"Speeds are 12% above average during late night (22:00). Ideal for backups and large file transfers.\",\"data\":{\"hours\":[22]}}]}"
+            },
+            {
+              "name": "Insufficient data",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"data_points\":2,\"hours\":168,\"trend\":\"insufficient_data\",\"trend_pct\":0,\"overall_avg_download\":null,\"hourly_averages\":{},\"best_hours\":[],\"peak_congestion_hours\":[],\"insights\":[]}"
+            }
+          ]
+        },
+        {
+          "name": "AI Insights (24h)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/ai-insights?hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["ai-insights"],
+              "query": [
+                {"key": "hours", "value": "24", "description": "24-hour window"}
+              ]
+            },
+            "description": "Same as the 7d insight endpoint but scoped to the last 24 hours."
+          }
         }
       ]
     }

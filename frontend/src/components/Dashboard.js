@@ -31,7 +31,7 @@ import {
   Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine
 } from 'recharts';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
-import { getRecentMeasurements, getISPComparison, runTestNow, getStats, getAlerts, getNetworkUsage, clearMeasurements } from '../services/api';
+import { getRecentMeasurements, getISPComparison, runTestNow, getStats, getAlerts, getNetworkUsage, clearMeasurements, getQualityScore, getAIInsights, getOutageConfidence } from '../services/api';
 
 /** Parse a naive UTC timestamp string from the backend (no Z suffix) as UTC */
 function parseTS(ts) {
@@ -407,6 +407,9 @@ function Dashboard() {
   const [ispData, setIspData] = useState([]);
   const [apiStats, setApiStats] = useState(null);
   const [alerts, setAlerts] = useState(null);
+  const [apiQuality, setApiQuality] = useState(null);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [outageConfidence, setOutageConfidence] = useState(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testingStage, setTestingStage] = useState('');
@@ -424,17 +427,23 @@ function Dashboard() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [measRes, ispRes, statsRes, alertsRes] = await Promise.all([
+      const [measRes, ispRes, statsRes, alertsRes, qualRes, confidenceRes] = await Promise.all([
         getRecentMeasurements(timeRange),
         getISPComparison(),
         getStats(timeRange),
         getAlerts(),
+        getQualityScore(timeRange).catch(() => null),
+        getOutageConfidence().catch(() => null),
       ]);
       setMeasurements(measRes.data);
       setIspData(ispRes.data);
       setApiStats(statsRes.data);
       setAlerts(alertsRes.data);
+      if (qualRes) setApiQuality(qualRes.data);
+      if (confidenceRes) setOutageConfidence(confidenceRes.data);
       setLastUpdated(new Date());
+      // Fetch AI insights separately (slower, won't block main load)
+      getAIInsights(timeRange).then((r) => setAiInsights(r.data)).catch(() => {});
     } catch {
       setError('Failed to load data. Make sure the backend is running.');
     } finally {
@@ -605,13 +614,15 @@ function Dashboard() {
   };
   const status = statusConfig[networkStatus];
 
-  // Quality score 0-100
-  const qualityScore = Math.max(0, Math.min(100, Math.round(
+  // Quality score — prefer API value, fall back to local estimate
+  const qualityScore = apiQuality?.score ?? Math.max(0, Math.min(100, Math.round(
     100
     - outageRate * 2
     - (avgDownloadNum !== null && avgDownloadNum < 10 ? 20 : avgDownloadNum !== null && avgDownloadNum < 25 ? 8 : 0)
   )));
-  const healthColor = outageRate > 10 ? '#EF5350' : outageRate > 3 ? '#FFA726' : '#66BB6A';
+  const qualityGrade = apiQuality?.grade ?? null;
+  const qualityLabel = apiQuality?.label ?? null;
+  const healthColor = qualityScore >= 80 ? '#66BB6A' : qualityScore >= 55 ? '#FFA726' : '#EF5350';
 
   // Sparkline & trend data per card
   const sparklines = {
@@ -957,6 +968,91 @@ function Dashboard() {
         ))}
       </Grid>
 
+      {/* ── Outage Confidence + AI Insights ────────────────────────────── */}
+      {!loading && (outageConfidence || aiInsights) && (
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            {/* Outage Confidence */}
+            {outageConfidence && (
+              <Grid size={{ xs: 12, md: 4 }}>
+                <Paper sx={{ p: 2.5, height: '100%', background: isDark ? '#080808' : '#fff', border: `1px solid ${outageConfidence.level === 'critical' ? 'rgba(239,83,80,0.4)' : outageConfidence.level === 'high' ? 'rgba(255,167,38,0.4)' : 'rgba(240,194,75,0.18)'}` }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <WarningAmberIcon sx={{ fontSize: 16, color: outageConfidence.level === 'critical' ? '#EF5350' : outageConfidence.level === 'high' ? '#FFA726' : '#f0c24b' }} />
+                    Smart Outage Detection
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, my: 1.5 }}>
+                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                      <CircularProgress variant="determinate" value={100} size={56} thickness={5} sx={{ color: isDark ? 'rgba(255,255,255,0.06)' : '#f0f0f0', position: 'absolute' }} />
+                      <CircularProgress variant="determinate" value={outageConfidence.confidence} size={56} thickness={5}
+                        sx={{ color: outageConfidence.confidence >= 80 ? '#EF5350' : outageConfidence.confidence >= 50 ? '#FFA726' : '#66BB6A' }} />
+                      <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Typography fontWeight={900} fontSize="0.85rem">{outageConfidence.confidence}%</Typography>
+                      </Box>
+                    </Box>
+                    <Box>
+                      <Chip label={outageConfidence.level.toUpperCase()} size="small"
+                        sx={{ fontWeight: 800, fontSize: 10, mb: 0.5,
+                          bgcolor: outageConfidence.level === 'none' ? 'rgba(67,160,71,0.15)' : outageConfidence.level === 'low' ? 'rgba(240,194,75,0.15)' : outageConfidence.level === 'medium' ? 'rgba(255,167,38,0.15)' : outageConfidence.level === 'high' ? 'rgba(255,87,34,0.15)' : 'rgba(239,83,80,0.15)',
+                          color: outageConfidence.level === 'none' ? '#43A047' : outageConfidence.level === 'low' ? '#f0c24b' : outageConfidence.level === 'medium' ? '#FFA726' : '#EF5350',
+                        }} />
+                      <Typography variant="caption" color="text.secondary" display="block">confidence</Typography>
+                    </Box>
+                  </Box>
+                  {outageConfidence.sources.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      {outageConfidence.sources.map((s, i) => (
+                        <Typography key={i} variant="caption" color="text.secondary" display="block" sx={{ fontSize: 11, lineHeight: 1.6 }}>
+                          • {s}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            )}
+
+            {/* AI Insights */}
+            {aiInsights && aiInsights.insights.length > 0 && (
+              <Grid size={{ xs: 12, md: outageConfidence ? 8 : 12 }}>
+                <Paper sx={{ p: 2.5, height: '100%', background: isDark ? '#080808' : '#fff', border: '1px solid rgba(240,194,75,0.18)' }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    AI Network Insights
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {aiInsights.insights.slice(0, 3).map((insight, i) => (
+                      <Box key={i} sx={{
+                        p: 1.5, borderRadius: 2,
+                        bgcolor: insight.severity === 'error' ? 'rgba(239,83,80,0.08)' : insight.severity === 'warning' ? 'rgba(255,167,38,0.08)' : 'rgba(240,194,75,0.06)',
+                        border: `1px solid ${insight.severity === 'error' ? 'rgba(239,83,80,0.2)' : insight.severity === 'warning' ? 'rgba(255,167,38,0.2)' : 'rgba(240,194,75,0.15)'}`,
+                      }}>
+                        <Typography variant="caption" fontWeight={800} display="block" sx={{ color: insight.severity === 'error' ? '#EF5350' : insight.severity === 'warning' ? '#FFA726' : '#f0c24b', mb: 0.25 }}>
+                          {insight.title}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11, lineHeight: 1.5 }}>
+                          {insight.message}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                  {aiInsights.trend && aiInsights.trend !== 'insufficient_data' && (
+                    <Box sx={{ mt: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Chip size="small" label={`Trend: ${aiInsights.trend}`}
+                        sx={{ fontWeight: 700, fontSize: 11,
+                          bgcolor: aiInsights.trend === 'improving' ? 'rgba(67,160,71,0.12)' : aiInsights.trend === 'degrading' ? 'rgba(239,83,80,0.12)' : 'rgba(148,163,184,0.12)',
+                          color: aiInsights.trend === 'improving' ? '#43A047' : aiInsights.trend === 'degrading' ? '#EF5350' : 'text.secondary',
+                        }} />
+                      {aiInsights.overall_avg_download && (
+                        <Chip size="small" label={`Avg ${aiInsights.overall_avg_download} Mbps (${aiInsights.hours_analyzed}h)`} sx={{ fontWeight: 600, fontSize: 11 }} />
+                      )}
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </motion.div>
+      )}
+
       {/* ── Network Health ───────────────────────────────────────────────── */}
       {!loading && measurements.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
@@ -989,7 +1085,7 @@ function Dashboard() {
                     </Box>
                   </Box>
                   <Typography variant="caption" color="text.secondary" display="block" mt={0.5} fontWeight={600}>
-                    Quality Score
+                    {qualityGrade ? `Grade ${qualityGrade} · ${qualityLabel}` : 'Quality Score'}
                   </Typography>
                 </Box>
 

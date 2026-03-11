@@ -13,23 +13,35 @@ import WifiIcon from '@mui/icons-material/Wifi';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import StarIcon from '@mui/icons-material/Star';
+import PublicIcon from '@mui/icons-material/Public';
+import HistoryIcon from '@mui/icons-material/History';
+import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
 import ReportForm from './components/ReportForm';
 import ISPReliabilityPage from './components/ISPReliabilityPage';
+import StatusPage from './components/StatusPage';
+import TimelinePage from './components/TimelinePage';
+import DiagnosticsPage from './components/DiagnosticsPage';
+import AIInsightsPage from './components/AIInsightsPage';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', path: '/', icon: <DashboardIcon fontSize="small" /> },
-  { label: 'Outage Map', path: '/map', icon: <MapIcon fontSize="small" /> },
-  { label: 'Report Issue', path: '/report', icon: <ReportProblemIcon fontSize="small" /> },
-  { label: 'ISP Reliability', path: '/isp', icon: <StarIcon fontSize="small" /> },
+  { label: 'Dashboard',    path: '/',           icon: <DashboardIcon fontSize="small" /> },
+  { label: 'Status',       path: '/status',     icon: <PublicIcon fontSize="small" /> },
+  { label: 'Outage Map',   path: '/map',        icon: <MapIcon fontSize="small" /> },
+  { label: 'Report Issue', path: '/report',     icon: <ReportProblemIcon fontSize="small" /> },
+  { label: 'ISP Reliability', path: '/isp',    icon: <StarIcon fontSize="small" /> },
+  { label: 'Timeline',     path: '/timeline',   icon: <HistoryIcon fontSize="small" /> },
+  { label: 'Diagnostics',  path: '/diagnostics',icon: <NetworkCheckIcon fontSize="small" /> },
+  { label: 'AI Insights',  path: '/insights',   icon: <AutoAwesomeIcon fontSize="small" /> },
 ];
 
 function NavBar() {
   const location = useLocation();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { mode, toggleColorMode } = useColorMode();
 
@@ -110,7 +122,8 @@ function NavBar() {
                       fontWeight: active ? 800 : 500,
                       bgcolor: active ? '#f0c24b' : 'transparent',
                       borderRadius: 2,
-                      px: 2,
+                      px: 1.5,
+                      fontSize: 13,
                       '&:hover': {
                         bgcolor: active ? '#f6d978' : 'rgba(240,194,75,0.12)',
                         color: active ? '#000' : '#f0c24b',
@@ -194,10 +207,14 @@ function App() {
         <NavBar />
         <Box sx={{ position: 'relative', zIndex: 1, pb: 6 }}>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/map" element={<OutageMap />} />
-            <Route path="/report" element={<ReportForm />} />
-            <Route path="/isp" element={<ISPReliabilityPage />} />
+            <Route path="/"           element={<Dashboard />} />
+            <Route path="/status"     element={<StatusPage />} />
+            <Route path="/map"        element={<OutageMap />} />
+            <Route path="/report"     element={<ReportForm />} />
+            <Route path="/isp"        element={<ISPReliabilityPage />} />
+            <Route path="/timeline"   element={<TimelinePage />} />
+            <Route path="/diagnostics" element={<DiagnosticsPage />} />
+            <Route path="/insights"   element={<AIInsightsPage />} />
           </Routes>
         </Box>
       </Box>

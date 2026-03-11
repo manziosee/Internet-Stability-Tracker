@@ -27,15 +27,17 @@ class SpeedMeasurement(Base):
 class CommunityReport(Base):
     __tablename__ = "community_reports"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    timestamp   = Column(DateTime, default=datetime.utcnow, nullable=False)
-    isp         = Column(String, nullable=False)
-    location    = Column(String, nullable=False)
-    latitude    = Column(Float,  nullable=False)
-    longitude   = Column(Float,  nullable=False)
-    issue_type  = Column(String, nullable=False)
-    description = Column(String, nullable=False)
-    status      = Column(String, default="pending", nullable=False)
+    id            = Column(Integer, primary_key=True, index=True)
+    timestamp     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    isp           = Column(String, nullable=False)
+    location      = Column(String, nullable=False)
+    latitude      = Column(Float,  nullable=False)
+    longitude     = Column(Float,  nullable=False)
+    issue_type    = Column(String, nullable=False)
+    description   = Column(String, nullable=False)
+    status        = Column(String, default="pending", nullable=False)
+    confirmations = Column(Integer, default=0, nullable=False)
+    rejections    = Column(Integer, default=0, nullable=False)
     # status: "pending" | "confirmed" | "resolved"
 
     __table_args__ = (
