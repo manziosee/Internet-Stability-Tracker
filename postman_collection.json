@@ -1,0 +1,350 @@
+{
+  "info": {
+    "name": "Internet Stability Tracker API",
+    "description": "Complete API collection for the Internet Stability Tracker — community network monitoring platform.\n\n**Base URL**: `http://localhost:8000/api` (dev) or your Fly.io URL.\n\nSet the `base_url` collection variable to switch environments.",
+    "version": "1.0.0",
+    "_postman_id": "ist-api-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api",
+      "type": "string",
+      "description": "Change to your Fly.io URL for production: https://internet-stability-tracker.fly.dev/api"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/../health",
+              "host": ["{{base_url}}"],
+              "path": ["..", "health"]
+            },
+            "description": "Returns service status, UTC timestamp, and current environment."
+          },
+          "response": [
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\":\"healthy\",\"timestamp\":\"2026-03-11T14:54:29.327197+00:00\",\"environment\":\"development\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Speed Test",
+      "item": [
+        {
+          "name": "Run speed test now",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/test-now?location=Kigali&lat=-1.9441&lon=30.0619",
+              "host": ["{{base_url}}"],
+              "path": ["test-now"],
+              "query": [
+                {"key": "location", "value": "Kigali", "description": "Human-readable location label"},
+                {"key": "lat", "value": "-1.9441", "description": "Latitude (-90 to 90)"},
+                {"key": "lon", "value": "30.0619", "description": "Longitude (-180 to 180)"}
+              ]
+            },
+            "description": "Triggers a real speed test (speedtest-cli). Rate limited: 5 req/60s per IP.\n\nAll query params are optional — omit for location-less test."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":26,\"timestamp\":\"2026-03-11T14:55:00.123456\",\"download_speed\":187.2,\"upload_speed\":19.7,\"ping\":10.8,\"isp\":\"GVA-Canalbox\",\"location\":\"Kigali\",\"latitude\":-1.9441,\"longitude\":30.0619,\"is_outage\":false}"
+            },
+            {
+              "name": "Rate Limited",
+              "status": "Too Many Requests",
+              "code": 429,
+              "body": "{\"detail\":\"Too many requests — please slow down.\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Measurements",
+      "item": [
+        {
+          "name": "List all measurements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/measurements?skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["measurements"],
+              "query": [
+                {"key": "skip",  "value": "0",  "description": "Offset (pagination)"},
+                {"key": "limit", "value": "50", "description": "Max records returned (1-500)"}
+              ]
+            },
+            "description": "Paginated list of speed test records, most recent first."
+          }
+        },
+        {
+          "name": "Recent measurements (24h)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/measurements/recent?hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["measurements", "recent"],
+              "query": [
+                {"key": "hours", "value": "24", "description": "Time window in hours (1-168)"}
+              ]
+            },
+            "description": "Measurements within the last N hours. Use hours=168 for 7-day view."
+          }
+        },
+        {
+          "name": "Clear all measurements",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/measurements",
+              "host": ["{{base_url}}"],
+              "path": ["measurements"]
+            },
+            "description": "⚠️ IRREVERSIBLE — permanently deletes all speed test records and associated outage events."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"deleted\":25,\"message\":\"All measurements cleared.\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "Aggregated stats (24h)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/stats?hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["stats"],
+              "query": [
+                {"key": "hours", "value": "24", "description": "Time window in hours (1-168)"}
+              ]
+            },
+            "description": "Total tests, outage count, uptime %, average download/upload/ping for the time window."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"total_tests\":10,\"total_outages\":0,\"uptime_percentage\":100.0,\"avg_download_mbps\":187.5,\"avg_upload_mbps\":19.8,\"avg_ping_ms\":10.9,\"last_test_at\":\"2026-03-11T14:55:00\",\"hours\":24}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "Current alert status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/alerts",
+              "host": ["{{base_url}}"],
+              "path": ["alerts"]
+            },
+            "description": "Whether there is an active outage right now, plus the 48-hour outage count and recent events."
+          },
+          "response": [
+            {
+              "name": "All clear",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"current_outage\":false,\"outage_count_48h\":0,\"recent_outages\":[]}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Outages",
+      "item": [
+        {
+          "name": "List outage measurements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/outages?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["outages"],
+              "query": [
+                {"key": "limit", "value": "50", "description": "Max records (1-200)"}
+              ]
+            },
+            "description": "Individual speed test records where is_outage=true."
+          }
+        },
+        {
+          "name": "Outage event log",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/outage-events?limit=50&resolved_only=false",
+              "host": ["{{base_url}}"],
+              "path": ["outage-events"],
+              "query": [
+                {"key": "limit",         "value": "50",    "description": "Max records (1-200)"},
+                {"key": "resolved_only", "value": "false", "description": "Set true to return only resolved events"}
+              ]
+            },
+            "description": "Structured outage events with computed duration_minutes and severity (critical/high/medium)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ISP",
+      "item": [
+        {
+          "name": "ISP comparison",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/isp-comparison",
+              "host": ["{{base_url}}"],
+              "path": ["isp-comparison"]
+            },
+            "description": "Average download, upload, ping and total test count grouped by ISP name."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "[{\"isp\":\"GVA-Canalbox\",\"avg_download\":187.5,\"avg_upload\":19.8,\"avg_ping\":10.9,\"total_tests\":10}]"
+            }
+          ]
+        },
+        {
+          "name": "ISP reliability scores (7d)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/isp-reliability?hours=168",
+              "host": ["{{base_url}}"],
+              "path": ["isp-reliability"],
+              "query": [
+                {"key": "hours", "value": "168", "description": "Time window — 24h, 168h (7d), or up to 168h max"}
+              ]
+            },
+            "description": "Per-ISP uptime %, averages and letter grade (A+/A/B/C/D/F). Sorted by uptime descending."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "[{\"isp\":\"GVA-Canalbox\",\"total_tests\":10,\"outage_tests\":0,\"uptime_pct\":100.0,\"avg_download\":187.5,\"avg_upload\":19.8,\"avg_ping\":10.9,\"grade\":\"A+\"}]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Community Reports",
+      "item": [
+        {
+          "name": "List reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/reports?skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["reports"],
+              "query": [
+                {"key": "skip",  "value": "0",  "description": "Offset"},
+                {"key": "limit", "value": "50", "description": "Max records (1-500)"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit a report",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{base_url}}/reports",
+              "host": ["{{base_url}}"],
+              "path": ["reports"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isp\": \"MTN Rwanda\",\n  \"location\": \"Kigali, Kimironko\",\n  \"latitude\": -1.9441,\n  \"longitude\": 30.0619,\n  \"issue_type\": \"outage\",\n  \"description\": \"Complete loss of connectivity since 09:00 — no signal on LTE or fibre backup.\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Submit a crowd-sourced network issue.\n\n**issue_type** must be one of: `outage` | `slow` | `intermittent` | `other`\n\nRate limited: 20 req/60s per IP."
+          },
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "body": "{\"id\":1,\"timestamp\":\"2026-03-11T15:00:00\",\"isp\":\"MTN Rwanda\",\"location\":\"Kigali, Kimironko\",\"latitude\":-1.9441,\"longitude\":30.0619,\"issue_type\":\"outage\",\"description\":\"Complete loss of connectivity since 09:00 — no signal on LTE or fibre backup.\"}"
+            },
+            {
+              "name": "Validation Error",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\"detail\":[{\"loc\":[\"body\",\"issue_type\"],\"msg\":\"issue_type must be one of {'outage', 'slow', 'intermittent', 'other'}\",\"type\":\"value_error\"}]}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Network Activity",
+      "item": [
+        {
+          "name": "Live network usage",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/network-usage",
+              "host": ["{{base_url}}"],
+              "path": ["network-usage"]
+            },
+            "description": "1-second bandwidth sample (download_mbps / upload_mbps) plus a list of processes with active ESTABLISHED TCP connections.\n\n⏱ This call takes ~1 second to complete (intentional — needed for the bandwidth sample)."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"download_mbps\":2.45,\"upload_mbps\":0.12,\"total_sent_gb\":1.234,\"total_recv_gb\":8.567,\"apps\":[{\"name\":\"chrome\",\"pid\":12345,\"connections\":14,\"remote_addresses\":[\"142.250.x.x\"]},{\"name\":\"code\",\"pid\":23456,\"connections\":3,\"remote_addresses\":[\"20.190.x.x\"]}],\"sampled_at\":\"2026-03-11T14:55:30.123456\"}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

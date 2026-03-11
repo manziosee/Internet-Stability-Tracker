@@ -1,424 +1,369 @@
-# 🌐 Internet Stability Tracker
-
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
-![React](https://img.shields.io/badge/react-18.2-blue.svg)
+# Internet Stability Tracker
 
-**A Community-Driven Network Monitoring Platform**
+<img src="frontend/public/favicon.svg" alt="IST Logo" width="72" />
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Contributing](#-contributing)
+**Community-driven network monitoring — real-time speed tests, outage detection, ISP grading**
+
+[![Version](https://img.shields.io/badge/version-1.0.0-f0c24b?style=flat-square)](https://github.com/manziosee/Internet-Stability-Tracker)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![React](https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Turso](https://img.shields.io/badge/Turso-libSQL-4FF8D2?style=flat-square)](https://turso.tech)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com)
+[![Fly.io](https://img.shields.io/badge/deploy-fly.io-7C3AED?style=flat-square)](https://fly.io)
+[![License](https://img.shields.io/badge/license-MIT-22C55E?style=flat-square)](LICENSE)
+
+[Features](#-features) · [Quick Start](#-quick-start) · [API Docs](#-api-reference) · [Deploy to Fly.io](#-deploy-to-flyio) · [Docker](#-docker) · [Contributing](#-contributing)
 
 </div>
 
 ---
 
-## 📖 About
+## Overview
 
-Internet Stability Tracker is a real-time network monitoring system that automatically measures internet speed, detects outages, and visualizes network performance across different locations and ISPs. Built for communities to gain transparency into their local network infrastructure.
+Internet Stability Tracker is a full-stack network monitoring platform that:
 
-### 🎯 Problem It Solves
-
-Many people experience unstable internet connections but lack concrete data to:
-- Identify patterns in network outages
-- Compare ISP performance objectively
-- Report issues with evidence
-- Make informed decisions about internet providers
-
-### ✨ Why It's Unique
-
-- **Local Intelligence**: Community-driven data collection for hyperlocal insights
-- **Real-Time Monitoring**: Automated speed tests every 5 minutes
-- **Visual Analytics**: Interactive maps and charts for easy understanding
-- **ISP Transparency**: Objective performance comparisons
-- **Open Source**: Free and customizable for any community
+- Runs **on-demand speed tests** (never auto-scheduled — you control when)
+- Detects **outages** automatically when download speed drops below threshold
+- Visualises **speed history** on an interactive area chart
+- Shows **live network activity** — real-time bandwidth + which apps are online
+- Grades every **ISP** with an A+/F letter grade based on uptime and speed
+- Accepts **community reports** with GPS coordinates on an interactive map
+- Ships as a single Docker container or deploys to **Fly.io** in minutes
 
 ---
 
-## 🚀 Features
+## Features
 
-### Core Functionality
-
-| Feature | Description |
-|---------|-------------|
-| ⚡ **Automated Speed Tests** | Runs every 5 minutes using speedtest-cli |
-| 🗺️ **Outage Map** | Real-time visualization of network issues on interactive maps |
-| 📊 **ISP Comparison** | Side-by-side performance metrics for different providers |
-| 🚨 **Outage Detection** | Automatic identification of connection failures |
-| 📈 **Historical Tracking** | View speed trends over time with interactive charts |
-| 👥 **Community Reports** | User-submitted network issues and observations |
-| 📱 **Responsive Dashboard** | Works seamlessly on desktop and mobile devices |
-| 🔔 **Alert System** | Notifications when internet goes down (coming soon) |
+| Category | Details |
+|----------|---------|
+| **Speed Testing** | On-demand via button click; measures download, upload, and ping |
+| **Outage Detection** | Auto-flags measurements below `OUTAGE_THRESHOLD_MBPS` (default 1 Mbps) |
+| **Live Dashboard** | Animated stat cards, sparklines, quality score gauge, trend badges |
+| **Speed Chart** | Recharts area chart — selectable 6h / 12h / 24h / 48h windows |
+| **ISP Reliability** | Letter grades, uptime %, averages — updated on every test |
+| **Outage Map** | Leaflet interactive map with community reports and outage pins |
+| **Live Network Activity** | Real-time bandwidth bars + per-app connection tiles (psutil, no root) |
+| **Community Reports** | Validated submissions with ISP, GPS, issue type, description |
+| **Data Export** | One-click CSV export of full speed history |
+| **Clear History** | Confirmation-gated delete of all measurements |
+| **Push Notifications** | Browser notifications when an outage is detected |
+| **PWA** | Installable as a desktop/mobile app via `manifest.webmanifest` |
+| **Dark Mode** | Full MUI dark theme with gold accent |
+| **Security** | Rate limiting, CSP, HSTS, input validation, no SQL injection surface |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
-- **FastAPI** - Modern, fast Python web framework
-- **PostgreSQL** - Robust relational database
-- **SQLAlchemy** - SQL toolkit and ORM
-- **APScheduler** - Background task scheduling
-- **speedtest-cli** - Network speed measurement
-- **Uvicorn** - ASGI server
+| Library | Purpose |
+|---------|---------|
+| **FastAPI 0.104** | Async REST API framework |
+| **SQLAlchemy 2** | ORM with Turso (libSQL) via custom HTTP adapter |
+| **Turso / libSQL** | Serverless SQLite-compatible cloud database |
+| **APScheduler 3** | Background scheduler (disabled by default — use `AUTO_SPEED_TEST=true` to enable) |
+| **speedtest-cli** | Real speed measurement via Speedtest.net |
+| **psutil** | System network I/O and per-process connection listing |
+| **Pydantic v2** | Request validation with field-level constraints |
+| **Uvicorn** | ASGI server |
 
 ### Frontend
-- **React 18** - UI library
-- **React Router** - Navigation
-- **Leaflet** - Interactive maps
-- **Recharts** - Data visualization
-- **Axios** - HTTP client
+| Library | Purpose |
+|---------|---------|
+| **React 18** | UI framework |
+| **MUI v5** | Component library (dark gold theme) |
+| **Framer Motion** | Animations and transitions |
+| **Recharts** | Speed-over-time area chart |
+| **React Leaflet** | Interactive outage map |
+| **Axios** | HTTP client |
 
-### DevOps
-- **Docker & Docker Compose** - Containerization
-- **Alembic** - Database migrations
-- **Git** - Version control
+### Infrastructure
+| Tool | Purpose |
+|------|---------|
+| **Docker** | Multi-stage builds; single-container and compose variants |
+| **nginx 1.27** | Hardened reverse proxy with CSP, SQL-injection URI blocking |
+| **Fly.io** | One-command cloud deployment (`fly deploy`) |
+| **GitHub Actions** | CI — builds Docker images on push |
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
-
-- **Docker Desktop** (recommended) OR
-- Python 3.9+, Node.js 16+, PostgreSQL 14+
-
-### Option 1: Docker (Recommended) 🐳
+### Option 1 — Docker Compose (recommended)
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd "Internet Stability Tracker"
+git clone https://github.com/manziosee/Internet-Stability-Tracker.git
+cd Internet-Stability-Tracker
 
-# Start all services
-docker-compose up -d
+# Copy and fill in your Turso credentials
+cp .env.example .env
+# Edit .env — set TURSO_DB_URL and TURSO_AUTH_TOKEN
 
-# Access the application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
+docker compose up -d
 ```
 
-### Option 2: Manual Setup
+Open **http://localhost** — the React UI proxies all `/api` calls through nginx to the backend.
 
-#### 1️⃣ Database Setup
-
-```bash
-# Using Docker
-docker-compose up -d postgres
-
-# OR install PostgreSQL locally and create database
-createdb internet_tracker
-```
-
-#### 2️⃣ Backend Setup
+### Option 2 — Local development
 
 ```bash
+# ── Backend ──────────────────────────────────────────────────────────────────
 cd backend
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# Install dependencies
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Configure environment
-copy .env.example .env
-# Edit .env with your database credentials
+# Create .env (see Configuration section below)
+cp .env.example .env
 
-# Run the application
-python run.py
-```
+python run.py          # http://localhost:8000
+                       # API docs: http://localhost:8000/docs
 
-Backend will be available at `http://localhost:8000`
-
-#### 3️⃣ Frontend Setup
-
-```bash
+# ── Frontend (separate terminal) ─────────────────────────────────────────────
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start development server
-npm start
-```
-
-Frontend will open at `http://localhost:3000`
-
----
-
-## 📁 Project Structure
-
-```
-Internet Stability Tracker/
-├── 📂 backend/
-│   ├── 📂 app/
-│   │   ├── 📂 api/
-│   │   │   ├── __init__.py
-│   │   │   └── routes.py          # API endpoints
-│   │   ├── 📂 core/
-│   │   │   ├── __init__.py
-│   │   │   ├── config.py          # Configuration management
-│   │   │   └── database.py        # Database connection
-│   │   ├── 📂 models/
-│   │   │   ├── __init__.py
-│   │   │   └── measurement.py     # Database models
-│   │   ├── 📂 services/
-│   │   │   ├── __init__.py
-│   │   │   └── speed_test.py      # Speed test logic
-│   │   ├── __init__.py
-│   │   ├── main.py                # FastAPI application
-│   │   └── scheduler.py           # Background tasks
-│   ├── 📂 tests/
-│   ├── .env.example
-│   ├── .gitignore
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── run.py                     # Application entry point
-├── 📂 frontend/
-│   ├── 📂 public/
-│   │   └── index.html
-│   ├── 📂 src/
-│   │   ├── 📂 components/
-│   │   │   ├── Dashboard.js       # Main dashboard
-│   │   │   ├── Dashboard.css
-│   │   │   ├── OutageMap.js       # Map visualization
-│   │   │   └── OutageMap.css
-│   │   ├── 📂 services/
-│   │   │   └── api.js             # API client
-│   │   ├── App.js
-│   │   ├── App.css
-│   │   ├── index.js
-│   │   └── index.css
-│   ├── .gitignore
-│   ├── Dockerfile
-│   └── package.json
-├── .gitignore
-├── docker-compose.yml
-├── README.md
-└── SETUP.md
+npm start              # http://localhost:3000
 ```
 
 ---
 
-## 🔌 API Endpoints
+## Configuration
 
-### Measurements
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/measurements` | Get all measurements (paginated) |
-| GET | `/api/measurements/recent?hours=24` | Get recent measurements |
-| POST | `/api/test-now` | Run speed test immediately |
-
-### Outages
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/outages` | Get detected outages |
-
-### Analytics
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/isp-comparison` | Compare ISP performance |
-
-### Community
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/reports` | Submit community report |
-
-**Interactive API Documentation**: Visit `http://localhost:8000/docs` when running
-
----
-
-## 🎨 Screenshots
-
-### Dashboard
-View real-time speed metrics, historical trends, and ISP comparisons
-
-### Outage Map
-Interactive map showing network issues across different locations
-
-### ISP Comparison
-Side-by-side performance analysis of internet service providers
-
----
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Create a `.env` file in the `backend` directory:
+Create `backend/.env` (or root `.env` for Docker Compose):
 
 ```env
-# Database
-DATABASE_URL=postgresql://tracker_user:tracker_pass@localhost:5432/internet_tracker
+# ── Required ─────────────────────────────────────────────────────────────────
+TURSO_DB_URL=libsql://your-db-name.turso.io
+TURSO_AUTH_TOKEN=your-jwt-token-here
 
-# Security
-SECRET_KEY=your-secret-key-change-this-in-production
-
-# Application
-ENVIRONMENT=development
-SPEED_TEST_INTERVAL=300  # seconds (5 minutes)
-
-# Optional: Location
-DEFAULT_LOCATION=Your City
-DEFAULT_LATITUDE=0.0
-DEFAULT_LONGITUDE=0.0
+# ── Optional (defaults shown) ─────────────────────────────────────────────────
+SECRET_KEY=change-this-to-a-random-64-char-string
+ENVIRONMENT=development          # set 'production' to disable /docs and enable HSTS
+SPEED_TEST_INTERVAL=300          # seconds between auto-tests (only if AUTO_SPEED_TEST=true)
+AUTO_SPEED_TEST=false            # true = background scheduler; false = button-click only
+OUTAGE_THRESHOLD_MBPS=1.0        # below this download speed → outage flagged
+CORS_ORIGINS=["http://localhost:3000"]
+MAX_HISTORY_HOURS=168            # 7 days maximum for history queries
 ```
 
-### Customization
-
-- **Test Interval**: Adjust `SPEED_TEST_INTERVAL` in `.env` (default: 300 seconds)
-- **Outage Threshold**: Modify threshold in `backend/app/services/speed_test.py`
-- **Map Center**: Update default coordinates in `frontend/src/components/OutageMap.js`
+Get Turso credentials: [turso.tech](https://turso.tech) → create a database → copy URL + token.
 
 ---
 
-## 🧪 Testing
+## API Reference
+
+Interactive docs at **http://localhost:8000/docs** (disabled in production).
+
+### All endpoints
+
+| Method | Endpoint | Description | Rate limit |
+|--------|----------|-------------|-----------|
+| `GET` | `/health` | Service health check | — |
+| `POST` | `/api/test-now` | Run speed test now | 5 / 60 s |
+| `GET` | `/api/measurements` | All measurements (paginated) | 120 / 60 s |
+| `GET` | `/api/measurements/recent?hours=24` | Recent measurements | 120 / 60 s |
+| `DELETE` | `/api/measurements` | Clear all measurements | 120 / 60 s |
+| `GET` | `/api/stats?hours=24` | Aggregated stats | 120 / 60 s |
+| `GET` | `/api/alerts` | Current outage status | 120 / 60 s |
+| `GET` | `/api/outages` | Measurements flagged as outages | 120 / 60 s |
+| `GET` | `/api/outage-events` | Structured outage event log | 120 / 60 s |
+| `GET` | `/api/isp-comparison` | ISP averages | 120 / 60 s |
+| `GET` | `/api/isp-reliability?hours=168` | ISP letter grades + uptime % | 120 / 60 s |
+| `GET` | `/api/network-usage` | Live bandwidth + app connections | 120 / 60 s |
+| `GET` | `/api/reports` | Community reports (paginated) | 120 / 60 s |
+| `POST` | `/api/reports` | Submit a community report | 20 / 60 s |
+
+Import **`postman_collection.json`** (repo root) into Postman for ready-to-run requests with example responses.
+
+---
+
+## Deploy to Fly.io
+
+The repo ships with `fly.toml` for a single-container deploy (React + FastAPI in one image).
 
 ```bash
-# Backend tests
-cd backend
-pytest
+# 1. Install flyctl
+curl -L https://fly.io/install.sh | sh
 
-# Frontend tests
-cd frontend
-npm test
-```
+# 2. Authenticate
+fly auth login
 
----
+# 3. Create the app (first time only)
+fly launch --no-deploy
 
-## 📊 Database Schema
+# 4. Set secrets (never stored in fly.toml)
+fly secrets set \
+  TURSO_DB_URL="libsql://your-db.turso.io" \
+  TURSO_AUTH_TOKEN="your-token" \
+  SECRET_KEY="$(openssl rand -hex 32)"
 
-### SpeedMeasurement
-- `id`: Primary key
-- `timestamp`: Measurement time
-- `download_speed`: Download speed (Mbps)
-- `upload_speed`: Upload speed (Mbps)
-- `ping`: Latency (ms)
-- `isp`: Internet Service Provider
-- `location`: Geographic location
-- `latitude`, `longitude`: Coordinates
-- `is_outage`: Outage flag
-
-### CommunityReport
-- `id`: Primary key
-- `timestamp`: Report time
-- `isp`: Internet Service Provider
-- `location`: Geographic location
-- `latitude`, `longitude`: Coordinates
-- `issue_type`: Type of issue
-- `description`: Detailed description
-
----
-
-## 🚢 Deployment
-
-### Docker Production
-
-```bash
-# Build and run
-docker-compose -f docker-compose.prod.yml up -d
+# 5. Deploy
+fly deploy
 
 # View logs
-docker-compose logs -f
+fly logs
 ```
 
-### Manual Deployment
+The app will be live at `https://internet-stability-tracker.fly.dev`.
 
-1. Set `ENVIRONMENT=production` in `.env`
-2. Use production database credentials
-3. Build frontend: `npm run build`
-4. Serve with nginx or similar
-5. Run backend with gunicorn: `gunicorn app.main:app`
+### Update CORS for production
 
----
+After deploy, set `CORS_ORIGINS` to your actual domain:
 
-## 🤝 Contributing
-
-We welcome contributions! Here's how you can help:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
-3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** to the branch (`git push origin feature/AmazingFeature`)
-5. **Open** a Pull Request to the `develop` branch
-
-### Development Workflow
-
-- `main` - Production-ready code
-- `develop` - Integration branch for features
-- `feature/*` - New features
-- `bugfix/*` - Bug fixes
-
----
-
-## 🐛 Troubleshooting
-
-### Database Connection Error
 ```bash
-# Check if PostgreSQL is running
-docker-compose ps
-
-# Restart database
-docker-compose restart postgres
+fly secrets set CORS_ORIGINS='["https://internet-stability-tracker.fly.dev"]'
 ```
 
-### Speed Test Fails
-- Ensure stable internet connection
-- Some networks block speedtest servers
-- Try running manually: `speedtest-cli`
+---
 
-### Frontend Can't Connect to Backend
-- Verify backend is running on port 8000
-- Check CORS settings in `backend/app/main.py`
-- Ensure API_BASE_URL in `frontend/src/services/api.js` is correct
+## Docker
 
-### Port Already in Use
+### Single container (Fly.io / any VPS)
+
 ```bash
-# Windows - Find and kill process
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
+# Build
+docker build -t ist:latest .
 
-# Linux/Mac
-lsof -ti:8000 | xargs kill -9
+# Run (requires Turso credentials)
+docker run -p 8000:8000 \
+  -e TURSO_DB_URL=libsql://... \
+  -e TURSO_AUTH_TOKEN=... \
+  -e ENVIRONMENT=production \
+  ist:latest
+```
+
+### Two-container compose (nginx + FastAPI separate)
+
+```bash
+cp .env.example .env   # fill in Turso credentials
+docker compose up -d
+
+# Logs
+docker compose logs -f
+
+# Rebuild after code changes
+docker compose up -d --build
 ```
 
 ---
 
+## Project Structure
 
-## 🙏 Acknowledgments
-
-- [speedtest-cli](https://github.com/sivel/speedtest-cli) - Speed testing library
-- [Leaflet](https://leafletjs.com/) - Interactive maps
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python framework
-- [React](https://react.dev/) - UI library
+```
+Internet-Stability-Tracker/
+├── Dockerfile                    # Single-container (frontend + backend) — for Fly.io
+├── fly.toml                      # Fly.io deployment config
+├── docker-compose.yml            # Two-container local stack (nginx + FastAPI)
+├── postman_collection.json       # Postman API collection (all endpoints)
+├── .env.example                  # Environment variable template
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/routes.py         # All REST endpoints (tagged for Swagger)
+│   │   ├── core/
+│   │   │   ├── config.py         # Pydantic settings (reads .env)
+│   │   │   ├── database.py       # Turso/libSQL SQLAlchemy engine
+│   │   │   └── turso_dbapi.py    # Pure-Python HTTP adapter for Turso
+│   │   ├── models/measurement.py # SQLAlchemy models
+│   │   ├── services/speed_test.py# speedtest-cli wrapper
+│   │   ├── main.py               # FastAPI app + security middleware stack
+│   │   └── scheduler.py          # APScheduler (opt-in via AUTO_SPEED_TEST)
+│   ├── Dockerfile                # Backend-only image
+│   ├── requirements.txt
+│   └── .env.example
+│
+└── frontend/
+    ├── public/
+    │   ├── favicon.svg           # Gold WiFi SVG favicon
+    │   └── manifest.webmanifest  # PWA manifest
+    ├── src/
+    │   ├── components/
+    │   │   ├── Dashboard.js      # Main dashboard (stats, chart, network activity)
+    │   │   ├── OutageMap.js      # Leaflet map + community report form
+    │   │   └── ISPReliabilityPage.js  # ISP grades + outage history
+    │   ├── services/api.js       # Axios client (all endpoints)
+    │   └── App.js                # Router + nav
+    ├── nginx.conf                # Hardened nginx — CSP, SQL injection blocking
+    └── Dockerfile                # Node 20 build → nginx 1.27 serve
+```
 
 ---
 
-## 📧 Contact & Support
+## Security
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/internet-stability-tracker/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/internet-stability-tracker/discussions)
+| Layer | Measures |
+|-------|---------|
+| **HTTP headers** | X-Frame-Options, X-Content-Type-Options, CSP, HSTS (prod), Referrer-Policy, Permissions-Policy |
+| **Rate limiting** | Per-IP sliding-window in FastAPI middleware (no Redis required) |
+| **Input validation** | Pydantic v2 field validators — length limits, coordinate bounds, whitelist for `issue_type` |
+| **Request size** | 64 KB body limit via `RequestSizeLimitMiddleware` |
+| **nginx** | `server_tokens off`, URI pattern blocking for SQL injection keywords, `client_max_body_size 64k` |
+| **Docker** | Non-root `appuser`, `apt-get upgrade` in build, stripped source maps, `--ignore-scripts` on `npm ci` |
+| **CORS** | Explicit origins list, `allow_credentials=false`, `GET/POST/DELETE` only |
+| **Docs** | `/docs`, `/redoc`, `/openapi.json` disabled in production |
+
+---
+
+## Testing
+
+```bash
+# Backend unit tests
+cd backend
+pytest -v
+
+# Backend with coverage
+pytest --cov=app --cov-report=term-missing
+```
+
+---
+
+## Troubleshooting
+
+**Speed test button shows error**
+- Backend needs outbound internet access; check firewall rules
+- Some corporate networks block Speedtest.net servers
+
+**Timestamps show wrong time**
+- Backend stores UTC; frontend adds `Z` suffix via `parseTS()` helper — should be correct
+- Check your browser timezone settings
+
+**`X-Frame-Options` console warning**
+- This header must be sent by the server (nginx/FastAPI), not as a `<meta>` tag — already fixed
+
+**`psutil` / network-usage returns 500**
+- `psutil` is installed in Docker; for local dev make sure `pip install psutil>=5.9.0`
+
+**`TURSO_DB_URL` not set error**
+- Copy `.env.example` to `.env` and fill in your Turso credentials
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch — `git checkout -b feature/your-feature`
+3. Commit your changes — `git commit -m 'feat: add your feature'`
+4. Push and open a Pull Request to `develop`
+
+Branch strategy: `main` (production) ← `develop` (integration) ← `feature/*`
+
+---
+
+## Acknowledgements
+
+- [speedtest-cli](https://github.com/sivel/speedtest-cli) — speed measurement
+- [Turso](https://turso.tech) — serverless libSQL cloud database
+- [Leaflet](https://leafletjs.com) + [React Leaflet](https://react-leaflet.js.org) — maps
+- [FastAPI](https://fastapi.tiangolo.com) — async Python API framework
+- [MUI](https://mui.com) — React component library
+- [Fly.io](https://fly.io) — deployment platform
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for better internet transparency**
-
-⭐ Star this repo if you find it useful!
+Made with ❤️ for better internet transparency · ⭐ Star if you find it useful
 
 </div>

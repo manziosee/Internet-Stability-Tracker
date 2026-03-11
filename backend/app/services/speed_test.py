@@ -1,7 +1,9 @@
 import logging
+from datetime import datetime
 import speedtest
 from sqlalchemy.orm import Session
-from ..models.measurement import SpeedMeasurement
+from sqlalchemy import desc
+from ..models.measurement import SpeedMeasurement, OutageEvent
 from ..core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,61 @@ class SpeedTestService:
             is_outage=result["is_outage"],
         )
         db.add(measurement)
+        db.flush()  # assign ID before referencing
+
+        # ── Outage event lifecycle ───────────────────────────────────────────
+        SpeedTestService._update_outage_event(db, measurement)
+
         db.commit()
         db.refresh(measurement)
         return measurement
+
+    @staticmethod
+    def _update_outage_event(db: Session, m: SpeedMeasurement) -> None:
+        """
+        Open a new OutageEvent when an outage starts.
+        Close the most recent open event when speeds recover.
+        """
+        open_event = (
+            db.query(OutageEvent)
+            .filter(OutageEvent.is_resolved == False)
+            .order_by(desc(OutageEvent.started_at))
+            .first()
+        )
+
+        if m.is_outage:
+            if open_event is None:
+                # Start a new outage event
+                event = OutageEvent(
+                    started_at=m.timestamp or datetime.utcnow(),
+                    isp=m.isp,
+                    location=m.location,
+                    latitude=m.latitude,
+                    longitude=m.longitude,
+                    is_resolved=False,
+                    measurement_count=1,
+                    avg_download=m.download_speed,
+                )
+                db.add(event)
+                logger.warning(
+                    "Outage event OPENED — ISP: %s  DL: %.2f Mbps", m.isp, m.download_speed
+                )
+            else:
+                # Update running average for ongoing outage
+                count = open_event.measurement_count + 1
+                avg   = (
+                    (open_event.avg_download or 0) * open_event.measurement_count + m.download_speed
+                ) / count
+                open_event.measurement_count = count
+                open_event.avg_download      = avg
+        else:
+            if open_event is not None:
+                # Speeds recovered — close the event
+                open_event.ended_at    = m.timestamp or datetime.utcnow()
+                open_event.is_resolved = True
+                duration = open_event.duration_minutes
+                logger.info(
+                    "Outage event CLOSED — duration: %.1f min  ISP: %s",
+                    duration if duration is not None else 0,
+                    open_event.isp,
+                )

@@ -3,12 +3,51 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Internet Stability Tracker - Monitor network performance" />
+
+    <!-- PWA theme colors -->
+    <meta name="theme-color" content="#f0c24b" />
+    <meta name="background-color" content="#0a0800" />
+
+    <!-- SEO -->
+    <meta name="description" content="Internet Stability Tracker — real-time community network monitoring, outage detection, ISP comparison and speed tests." />
+    <meta name="keywords" content="internet stability, network monitor, outage tracker, speed test, ISP comparison" />
+    <meta name="author" content="Internet Stability Tracker" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Internet Stability Tracker" />
+    <meta property="og:description" content="Real-time community network monitoring and outage detection." />
+    <meta property="og:image" content="/favicon.svg" />
+
+    <!-- Security (belt-and-suspenders; primary headers served by nginx/backend) -->
+    <!-- Note: X-Frame-Options cannot be set via meta tag — it is set by the server -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), payment=()" />
+
+    <!-- Custom SVG favicon — works in all modern browsers -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- PWA manifest — enables "Add to Home Screen" / install as app -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Preconnect for faster map tile loading -->
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+
     <title>Internet Stability Tracker</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>
+      <style>
+        body{font-family:sans-serif;background:#0a0800;color:#f0c24b;
+             display:flex;align-items:center;justify-content:center;
+             height:100vh;margin:0;text-align:center;padding:2rem;}
+      </style>
+      Internet Stability Tracker requires JavaScript. Please enable it in your browser settings.
+    </noscript>
     <div id="root"></div>
   </body>
 </html>
