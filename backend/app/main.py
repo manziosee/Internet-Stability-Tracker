@@ -55,9 +55,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Per-IP sliding-window rate limiter — no extra packages needed."""
 
     _RULES = {
-        "/api/test-now": (5, 60),
-        "/api/reports":  (20, 60),
-        "default":       (120, 60),
+        "/api/test-now":              (5,  60),   # 5 speed tests per minute
+        "/api/reports":               (5,  60),   # 5 report submissions per minute
+        "/api/measurements":          (3,  60),   # 3 delete calls per minute (admin-keyed anyway)
+        "/api/my-connection":         (10, 60),   # 10 geo lookups per minute
+        "default":                    (60, 60),   # 60 read requests per minute
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -103,9 +105,26 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
 # ─── App lifecycle ────────────────────────────────────────────────────────────
 
+def _run_migrations():
+    """Add new columns to existing tables if they don't exist yet."""
+    migrations = [
+        "ALTER TABLE community_reports ADD COLUMN confirmations INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE community_reports ADD COLUMN rejections INTEGER NOT NULL DEFAULT 0",
+    ]
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # column already exists
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
     scheduler = start_scheduler()
     logger.info("Application started — env: %s", settings.ENVIRONMENT)
     yield
@@ -125,21 +144,34 @@ app = FastAPI(
 Community-driven network monitoring platform that measures internet speed,
 detects outages, and visualises performance across ISPs.
 
+**Live API**: https://backend-cold-butterfly-9535.fly.dev/api
+**Frontend**: https://internet-stability-tracker.vercel.app
+
 ### Key capabilities
 - **Speed tests** — on-demand via `POST /api/test-now`; results stored in Turso (libSQL cloud)
+- **Network Quality Score** — composite 0–100 score with letter grade (A+→F) and breakdown
+- **Global Status** — platform-wide health (`healthy` / `degraded` / `outage`) + 7-day daily summary
 - **Statistics** — aggregated uptime %, averages and outage counts over any time window
-- **ISP reliability** — per-provider letter grades, uptime scores and averages
+- **Timeline** — chronological event log grouped by date (outages, degradations, recoveries)
+- **ISP reliability & rankings** — per-provider letter grades, weighted leaderboard scores
+- **Outage confidence** — smart 0–100% confidence score for whether current state is a real outage
 - **Outage events** — structured outage log with severity, duration and resolution status
-- **Community reports** — crowd-sourced issue submissions with GPS coordinates
+- **Community reports** — crowd-sourced issue submissions with GPS coordinates, confirm/reject voting
+- **Network Diagnostics** — live DNS + HTTP latency checks against 4 well-known targets
+- **AI Insights** — statistical pattern analysis: congestion windows, speed trends, optimal hours
 - **Live network activity** — real-time system bandwidth + per-process connection list
-- **Alert system** — current outage flag and recent outage summary
 
 ### Rate limits
 | Endpoint | Limit |
 |----------|-------|
 | `POST /api/test-now` | 5 req / 60 s per IP |
-| `POST /api/reports` | 20 req / 60 s per IP |
-| All other endpoints | 120 req / 60 s per IP |
+| `POST /api/reports` | 5 req / 60 s per IP |
+| `DELETE /api/measurements` | 3 req / 60 s per IP + requires `X-Admin-Key` header |
+| `GET /api/my-connection` | 10 req / 60 s per IP |
+| All other endpoints | 60 req / 60 s per IP |
+
+### Postman collection
+Import `postman_collection.json` from the repo root — pre-configured to hit the live production URL.
 """,
     version="1.0.0",
     contact={
@@ -157,11 +189,12 @@ detects outages, and visualises performance across ISPs.
         {"name": "outage-events", "description": "Structured outage event log with duration and severity"},
         {"name": "network",       "description": "Real-time system bandwidth and per-app connection list"},
         {"name": "speed-test",    "description": "On-demand speed test trigger"},
+        {"name": "insights",      "description": "AI-powered statistical pattern analysis and quality scoring"},
     ],
     lifespan=lifespan,
-    docs_url=None if _is_prod else "/docs",
-    redoc_url=None if _is_prod else "/redoc",
-    openapi_url=None if _is_prod else "/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 # Middleware stack (last added = outermost = executes first)
@@ -181,7 +214,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 
-@app.get("/health", include_in_schema=False)
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 def health_check():
     return {
         "status": "healthy",
