@@ -26,17 +26,23 @@ def scheduled_speed_test():
 
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="UTC")
-    scheduler.add_job(
-        scheduled_speed_test,
-        "interval",
-        seconds=settings.SPEED_TEST_INTERVAL,
-        id="speed_test",
-        replace_existing=True,
-        max_instances=1,          # never run two tests at the same time
-    )
+    if settings.AUTO_SPEED_TEST:
+        scheduler.add_job(
+            scheduled_speed_test,
+            "interval",
+            seconds=settings.SPEED_TEST_INTERVAL,
+            id="speed_test",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduler started — auto speed test every %ds",
+            settings.SPEED_TEST_INTERVAL,
+        )
+    else:
+        logger.info(
+            "Scheduler started — AUTO_SPEED_TEST=False, "
+            "tests only run via POST /api/test-now"
+        )
     scheduler.start()
-    logger.info(
-        "Scheduler started — running speed test every %ds",
-        settings.SPEED_TEST_INTERVAL,
-    )
     return scheduler

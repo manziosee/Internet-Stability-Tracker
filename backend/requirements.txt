@@ -8,4 +8,5 @@ python-dotenv==1.0.0
 alembic==1.12.1
 apscheduler==3.10.4
 httpx==0.25.2
+psutil>=5.9.0
 # psycopg2-binary removed — now using Turso (libSQL) via httpx HTTP adapter

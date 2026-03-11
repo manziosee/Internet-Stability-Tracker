@@ -12,15 +12,18 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import WifiIcon from '@mui/icons-material/Wifi';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
+import StarIcon from '@mui/icons-material/Star';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
 import ReportForm from './components/ReportForm';
+import ISPReliabilityPage from './components/ISPReliabilityPage';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/', icon: <DashboardIcon fontSize="small" /> },
   { label: 'Outage Map', path: '/map', icon: <MapIcon fontSize="small" /> },
   { label: 'Report Issue', path: '/report', icon: <ReportProblemIcon fontSize="small" /> },
+  { label: 'ISP Reliability', path: '/isp', icon: <StarIcon fontSize="small" /> },
 ];
 
 function NavBar() {
@@ -169,7 +172,7 @@ function NavBar() {
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Box sx={{
         minHeight: '100vh',
         bgcolor: 'background.default',
@@ -194,6 +197,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/map" element={<OutageMap />} />
             <Route path="/report" element={<ReportForm />} />
+            <Route path="/isp" element={<ISPReliabilityPage />} />
           </Routes>
         </Box>
       </Box>
