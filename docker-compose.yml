@@ -1,45 +1,97 @@
-version: '3.8'
+# Internet Stability Tracker — Docker Compose (two-container: nginx + FastAPI)
+# Usage:
+#   cp .env.example .env          # fill in TURSO_DB_URL and TURSO_AUTH_TOKEN
+#   docker compose up -d
+#
+# For single-container Fly.io deploy use the root Dockerfile + fly.toml instead.
+
+version: '3.9'
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
+
   # ── FastAPI Backend ──────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    image: ist-backend:latest
+    container_name: ist-backend
+    env_file: .env                          # load secrets — never commit .env
     environment:
-      TURSO_DB_URL:          ${TURSO_DB_URL}
-      TURSO_AUTH_TOKEN:      ${TURSO_AUTH_TOKEN}
-      SECRET_KEY:            ${SECRET_KEY:-internet-stability-tracker-secret}
       ENVIRONMENT:           ${ENVIRONMENT:-production}
       SPEED_TEST_INTERVAL:   ${SPEED_TEST_INTERVAL:-300}
+      AUTO_SPEED_TEST:       ${AUTO_SPEED_TEST:-false}
       OUTAGE_THRESHOLD_MBPS: ${OUTAGE_THRESHOLD_MBPS:-1.0}
-      CORS_ORIGINS:          '["http://localhost","http://localhost:80"]'
+      # Allow nginx (container name) and any localhost variants
+      CORS_ORIGINS: >-
+        ["http://localhost","http://localhost:80","http://localhost:3000",
+         "http://frontend","http://frontend:80"]
+    # Bind to loopback only — nginx is the only public entry point
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - ist-network
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 25s
+    labels:
+      com.ist.service: "backend"
+      com.ist.version: "1.0.0"
 
-  # ── React Frontend served via nginx ─────────────────────────────────────────
+  # ── React Frontend served by nginx ───────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        REACT_APP_API_URL: /api
+        REACT_APP_API_URL: /api   # relative — nginx proxies /api → backend:8000
+    image: ist-frontend:latest
+    container_name: ist-frontend
     ports:
       - "80:80"
+    networks:
+      - ist-network
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 32M
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+    labels:
+      com.ist.service: "frontend"
+      com.ist.version: "1.0.0"
+
+networks:
+  ist-network:
+    name: ist-network
+    driver: bridge

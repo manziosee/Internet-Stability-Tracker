@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -32,3 +32,15 @@ export const createReport = (data) =>
 
 export const runTestNow = (location, lat, lon) =>
   api.post('/test-now', null, { params: { location, lat, lon } });
+
+export const getOutageEvents = (limit = 50, resolvedOnly = false) =>
+  api.get(`/outage-events?limit=${limit}&resolved_only=${resolvedOnly}`);
+
+export const getISPReliability = (hours = 168) =>
+  api.get(`/isp-reliability?hours=${hours}`);
+
+export const getNetworkUsage = () =>
+  api.get('/network-usage');
+
+export const clearMeasurements = () =>
+  api.delete('/measurements');

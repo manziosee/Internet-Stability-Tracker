@@ -4,7 +4,8 @@ import {
   Box, Grid, Card, CardContent, Typography, Button, CircularProgress,
   Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   ToggleButtonGroup, ToggleButton, Skeleton, Chip, Alert, Tooltip,
-  LinearProgress, IconButton, useTheme
+  LinearProgress, IconButton, useTheme,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 import SpeedIcon from '@mui/icons-material/Speed';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -18,11 +19,26 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import VideocamIcon from '@mui/icons-material/Videocam';
+import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine
 } from 'recharts';
-import { getRecentMeasurements, getISPComparison, runTestNow } from '../services/api';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import { getRecentMeasurements, getISPComparison, runTestNow, getStats, getAlerts, getNetworkUsage, clearMeasurements } from '../services/api';
+
+/** Parse a naive UTC timestamp string from the backend (no Z suffix) as UTC */
+function parseTS(ts) {
+  if (!ts) return new Date(NaN);
+  // If already has timezone info, parse directly; otherwise append Z to force UTC
+  return new Date(/[Zz]|[+-]\d{2}:\d{2}$/.test(ts) ? ts : ts + 'Z');
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,6 +95,25 @@ const TIME_RANGES = [
   { label: '24h', value: 24 },
   { label: '48h', value: 48 },
 ];
+
+const ACTIVITIES = [
+  { label: '4K Streaming', minDown: 25, icon: VideocamIcon, color: '#f0c24b' },
+  { label: 'HD Streaming', minDown: 10, icon: VideocamIcon, color: '#66BB6A' },
+  { label: 'Video Calls', minDown: 5, icon: VideocamIcon, color: '#42A5F5' },
+  { label: 'Online Gaming', minDown: 3, icon: SportsEsportsIcon, color: '#AB47BC' },
+  { label: 'Music', minDown: 0.5, icon: MusicNoteIcon, color: '#26C6DA' },
+  { label: 'Browsing', minDown: 0.3, icon: CloudDownloadIcon, color: '#78909C' },
+];
+
+function speedRating(dl) {
+  if (dl === null || dl === undefined) return { label: 'No Data', color: '#78909C', grade: '—' };
+  if (dl >= 100) return { label: 'Excellent', color: '#43A047', grade: 'A+' };
+  if (dl >= 50)  return { label: 'Very Good', color: '#66BB6A', grade: 'A' };
+  if (dl >= 25)  return { label: 'Good',      color: '#f0c24b', grade: 'B' };
+  if (dl >= 10)  return { label: 'Fair',      color: '#FFA726', grade: 'C' };
+  if (dl >= 1)   return { label: 'Poor',      color: '#EF5350', grade: 'D' };
+  return { label: 'Outage', color: '#B71C1C', grade: 'F' };
+}
 
 const cardVariants = {
   hidden: { opacity: 0, y: 32, scale: 0.96 },
@@ -370,8 +405,17 @@ function Dashboard() {
 
   const [measurements, setMeasurements] = useState([]);
   const [ispData, setIspData] = useState([]);
+  const [apiStats, setApiStats] = useState(null);
+  const [alerts, setAlerts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
+  const [testingStage, setTestingStage] = useState('');
+  const [lastTestResult, setLastTestResult] = useState(null);
+  const [networkUsage, setNetworkUsage] = useState(null);
+  const [networkLoading, setNetworkLoading] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [timeRange, setTimeRange] = useState(24);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -380,12 +424,16 @@ function Dashboard() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [measRes, ispRes] = await Promise.all([
+      const [measRes, ispRes, statsRes, alertsRes] = await Promise.all([
         getRecentMeasurements(timeRange),
         getISPComparison(),
+        getStats(timeRange),
+        getAlerts(),
       ]);
       setMeasurements(measRes.data);
       setIspData(ispRes.data);
+      setApiStats(statsRes.data);
+      setAlerts(alertsRes.data);
       setLastUpdated(new Date());
     } catch {
       setError('Failed to load data. Make sure the backend is running.');
@@ -406,46 +454,142 @@ function Dashboard() {
     if (lastUpdated) setCountdown(60);
   }, [lastUpdated]);
 
-  // Tick countdown
+  // Tick countdown + live clock
   useEffect(() => {
-    const t = setInterval(() => setCountdown((s) => (s <= 1 ? 60 : s - 1)), 1000);
+    const t = setInterval(() => {
+      setCountdown((s) => (s <= 1 ? 60 : s - 1));
+      setNow(new Date());
+    }, 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Fetch network usage (1 second sample per call — poll every 5s)
+  const fetchNetworkUsage = useCallback(async () => {
+    if (networkLoading) return;
+    setNetworkLoading(true);
+    try {
+      const res = await getNetworkUsage();
+      setNetworkUsage(res.data);
+    } catch { /* silent */ } finally {
+      setNetworkLoading(false);
+    }
+  }, [networkLoading]);
+
+  useEffect(() => {
+    fetchNetworkUsage();
+    const t = setInterval(fetchNetworkUsage, 5000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Request browser notification permission once
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, []);
 
   const runTest = async () => {
     setTesting(true);
+    setLastTestResult(null);
+    setError(null);
     try {
-      await runTestNow();
+      // Step 1: get location
+      setTestingStage('Getting location…');
+      let lat = null, lon = null, location = null;
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        );
+        lat = parseFloat(pos.coords.latitude.toFixed(6));
+        lon = parseFloat(pos.coords.longitude.toFixed(6));
+      } catch { /* permission denied — run without coords */ }
+
+      // Step 2: run test
+      setTestingStage('Connecting to best server…');
+      await new Promise((r) => setTimeout(r, 400)); // brief pause so user sees stage
+      setTestingStage('Measuring download speed…');
+      const res = await runTestNow(location, lat, lon);
+      setLastTestResult({ ...res.data, ran_at: new Date() });
+
+      // Step 3: refresh data
+      setTestingStage('Saving results…');
       await fetchData();
-    } catch {
-      setError('Speed test failed. Please try again.');
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+      setError(`Speed test failed: ${detail}`);
     } finally {
       setTesting(false);
+      setTestingStage('');
     }
   };
 
-  // ── Computed stats ─────────────────────────────────────────────────────────
-
-  const stats = {
-    total: measurements.length,
-    outages: measurements.filter((m) => m.is_outage).length,
-    avgDownload:
-      measurements.length > 0
-        ? parseFloat((measurements.reduce((a, b) => a + b.download_speed, 0) / measurements.length).toFixed(1))
-        : '—',
-    avgUpload:
-      measurements.length > 0
-        ? parseFloat((measurements.reduce((a, b) => a + b.upload_speed, 0) / measurements.length).toFixed(1))
-        : '—',
+  const exportCSV = () => {
+    if (!measurements.length) return;
+    const header = 'Timestamp,Download (Mbps),Upload (Mbps),Ping (ms),ISP,Location,Outage';
+    const rows = [...measurements].reverse().map((m) =>
+      [
+        parseTS(m.timestamp).toISOString(),
+        m.download_speed?.toFixed(2),
+        m.upload_speed?.toFixed(2),
+        m.ping?.toFixed(0),
+        m.isp,
+        m.location || '',
+        m.is_outage ? 'Yes' : 'No',
+      ].join(',')
+    );
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `speed-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const outageRate = measurements.length > 0
-    ? parseFloat(((stats.outages / stats.total) * 100).toFixed(0))
-    : 0;
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      await clearMeasurements();
+      setClearDialogOpen(false);
+      await fetchData();
+    } catch (err) {
+      setError(`Clear failed: ${err?.response?.data?.detail || err?.message}`);
+      setClearDialogOpen(false);
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // ── Computed stats — prefer API stats endpoint over local aggregation ──────
+
+  const stats = {
+    total: apiStats?.total_tests ?? measurements.length,
+    outages: apiStats?.total_outages ?? measurements.filter((m) => m.is_outage).length,
+    avgDownload: apiStats?.avg_download_mbps != null
+      ? parseFloat(apiStats.avg_download_mbps.toFixed(1))
+      : measurements.length > 0
+        ? parseFloat((measurements.reduce((a, b) => a + b.download_speed, 0) / measurements.length).toFixed(1))
+        : '—',
+    avgUpload: apiStats?.avg_upload_mbps != null
+      ? parseFloat(apiStats.avg_upload_mbps.toFixed(1))
+      : measurements.length > 0
+        ? parseFloat((measurements.reduce((a, b) => a + b.upload_speed, 0) / measurements.length).toFixed(1))
+        : '—',
+    avgPing: apiStats?.avg_ping_ms != null ? parseFloat(apiStats.avg_ping_ms.toFixed(0)) : null,
+    uptime: apiStats?.uptime_percentage ?? null,
+    lastTestAt: apiStats?.last_test_at ?? null,
+  };
+
+  const outageRate = stats.uptime != null
+    ? parseFloat((100 - stats.uptime).toFixed(0))
+    : stats.total > 0
+      ? parseFloat(((stats.outages / stats.total) * 100).toFixed(0))
+      : 0;
 
   const avgDownloadNum = typeof stats.avgDownload === 'number' ? stats.avgDownload : null;
 
-  const hasActiveOutage = measurements.length > 0 && measurements[0]?.is_outage;
+  const hasActiveOutage = alerts?.current_outage ?? (measurements.length > 0 && measurements[0]?.is_outage);
 
   const networkStatus = measurements.length === 0
     ? 'unknown'
@@ -480,10 +624,26 @@ function Dashboard() {
   };
 
   const chartData = [...measurements].reverse().map((m) => ({
-    time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: parseTS(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     download: parseFloat(m.download_speed?.toFixed(2)),
     upload: parseFloat(m.upload_speed?.toFixed(2)),
   }));
+
+  const rating = speedRating(avgDownloadNum);
+  const notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+  // Notify when outage is first detected — placed AFTER hasActiveOutage is computed
+  const prevOutageRef = useRef(false);
+  useEffect(() => {
+    if (hasActiveOutage && !prevOutageRef.current) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('⚠️ Internet Outage Detected', {
+          body: 'Your connection appears to be down. Internet Stability Tracker is monitoring.',
+        });
+      }
+    }
+    prevOutageRef.current = hasActiveOutage;
+  }, [hasActiveOutage]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -521,9 +681,16 @@ function Dashboard() {
                 Network Dashboard
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: 13 }}>
-                {lastUpdated
-                  ? `Updated at ${lastUpdated.toLocaleTimeString()}`
-                  : 'Fetching latest measurements…'}
+                {now.toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                {' · '}
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                {lastUpdated && (
+                  <span style={{ opacity: 0.6, marginLeft: 8, fontSize: 11 }}>
+                    · data updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </Typography>
             </Box>
 
@@ -533,25 +700,27 @@ function Dashboard() {
 
               {/* Refresh icon */}
               <Tooltip title="Refresh now">
-                <IconButton
-                  onClick={fetchData}
-                  disabled={loading}
-                  sx={{
-                    bgcolor: 'rgba(255,255,255,0.12)',
-                    color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.22)' },
-                    '&:disabled': { color: 'rgba(255,255,255,0.3)' },
-                  }}
-                >
-                  <motion.div
-                    animate={loading ? { rotate: 360 } : { rotate: 0 }}
-                    transition={{ duration: 1, repeat: loading ? Infinity : 0, ease: 'linear' }}
-                    style={{ display: 'flex' }}
+                <span>
+                  <IconButton
+                    onClick={fetchData}
+                    disabled={loading}
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.12)',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.22)' },
+                      '&:disabled': { color: 'rgba(255,255,255,0.3)' },
+                    }}
                   >
-                    <RefreshIcon fontSize="small" />
-                  </motion.div>
-                </IconButton>
+                    <motion.div
+                      animate={loading ? { rotate: 360 } : { rotate: 0 }}
+                      transition={{ duration: 1, repeat: loading ? Infinity : 0, ease: 'linear' }}
+                      style={{ display: 'flex' }}
+                    >
+                      <RefreshIcon fontSize="small" />
+                    </motion.div>
+                  </IconButton>
+                </span>
               </Tooltip>
 
               {/* Run speed test */}
@@ -594,9 +763,43 @@ function Dashboard() {
                     '&:disabled': { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)' },
                   }}
                 >
-                  {testing ? 'Running…' : 'Run Speed Test'}
+                  {testing ? (testingStage || 'Running…') : 'Run Speed Test'}
                 </Button>
               </motion.div>
+
+              {/* Export CSV */}
+              <Tooltip title={measurements.length ? 'Export history as CSV' : 'No data to export'}>
+                <span>
+                  <IconButton
+                    onClick={exportCSV}
+                    disabled={!measurements.length}
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.08)',
+                      color: 'rgba(255,255,255,0.7)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.16)', color: '#fff' },
+                      '&:disabled': { color: 'rgba(255,255,255,0.2)' },
+                    }}
+                  >
+                    <FileDownloadIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+
+              {/* Notification bell */}
+              <Tooltip title={notifGranted ? 'Outage alerts enabled' : 'Enable outage alerts'}>
+                <IconButton
+                  onClick={() => 'Notification' in window && Notification.requestPermission()}
+                  sx={{
+                    bgcolor: notifGranted ? 'rgba(240,194,75,0.15)' : 'rgba(255,255,255,0.08)',
+                    color: notifGranted ? '#f0c24b' : 'rgba(255,255,255,0.45)',
+                    border: `1px solid ${notifGranted ? 'rgba(240,194,75,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                    '&:hover': { bgcolor: 'rgba(240,194,75,0.25)' },
+                  }}
+                >
+                  <NotificationsActiveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Box>
         </Paper>
@@ -613,8 +816,78 @@ function Dashboard() {
         )}
       </AnimatePresence>
 
+      {/* ── Last Test Result ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {lastTestResult && (
+          <motion.div
+            key="last-result"
+            initial={{ opacity: 0, y: -12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.4 }}
+          >
+            <Paper
+              sx={{
+                mb: 3, p: { xs: 2, md: 2.5 },
+                background: 'linear-gradient(135deg, #0a1200 0%, #111a00 60%, #1a2600 100%)',
+                border: '1px solid rgba(100,220,60,0.35)',
+                boxShadow: '0 8px 32px rgba(100,220,60,0.12)',
+                position: 'relative', overflow: 'hidden',
+              }}
+            >
+              <Box sx={{ position: 'absolute', top: -30, right: -30, width: 130, height: 130, borderRadius: '50%', bgcolor: 'rgba(100,220,60,0.06)' }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, position: 'relative', zIndex: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <LiveDot color="#66BB6A" />
+                  <Box>
+                    <Typography fontWeight={800} sx={{ color: '#66BB6A', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Latest Speed Test Result
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)' }}>
+                      {lastTestResult.ran_at.toLocaleString([], {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit', second: '2-digit',
+                      })}
+                      {' · '}{lastTestResult.isp}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Download', value: lastTestResult.download_speed?.toFixed(2), unit: 'Mbps', color: '#f0c24b', Icon: DownloadIcon },
+                    { label: 'Upload',   value: lastTestResult.upload_speed?.toFixed(2),   unit: 'Mbps', color: '#d0d0d0', Icon: UploadIcon },
+                    { label: 'Ping',     value: lastTestResult.ping?.toFixed(0),            unit: 'ms',   color: lastTestResult.ping < 30 ? '#66BB6A' : lastTestResult.ping < 80 ? '#FFA726' : '#EF5350', Icon: AccessTimeIcon },
+                  ].map(({ label, value, unit, color, Icon }) => (
+                    <Box key={label} sx={{ textAlign: 'center', minWidth: 80 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.25 }}>
+                        <Icon sx={{ fontSize: 13, color }} />
+                        <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</Typography>
+                      </Box>
+                      <Typography sx={{ fontWeight: 900, fontSize: '1.7rem', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                        {value}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>{unit}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+                <Chip
+                  label={lastTestResult.is_outage ? 'Outage' : 'OK'}
+                  size="small"
+                  sx={{
+                    fontWeight: 800, fontSize: 12,
+                    bgcolor: lastTestResult.is_outage ? 'rgba(239,83,80,0.18)' : 'rgba(102,187,106,0.18)',
+                    color: lastTestResult.is_outage ? '#EF5350' : '#66BB6A',
+                    border: `1px solid ${lastTestResult.is_outage ? 'rgba(239,83,80,0.4)' : 'rgba(102,187,106,0.4)'}`,
+                  }}
+                />
+              </Box>
+            </Paper>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Network Status Badge ──────────────────────────────────────────── */}
-      {!loading && measurements.length > 0 && (
+      {!loading && (apiStats != null || measurements.length > 0) && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
           <Box
             sx={{
@@ -643,10 +916,17 @@ function Dashboard() {
                 sx={{ bgcolor: `${status.color}20`, color: status.color, fontWeight: 700, border: `1px solid ${status.border}` }}
               />
               <Chip
-                label={`${timeRange}h window · ${measurements.length} tests`}
+                label={`${timeRange}h window · ${stats.total} tests`}
                 size="small"
                 sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', fontWeight: 600 }}
               />
+              {alerts?.outage_count_48h > 0 && (
+                <Chip
+                  label={`${alerts.outage_count_48h} outage${alerts.outage_count_48h !== 1 ? 's' : ''} in 48h`}
+                  size="small"
+                  sx={{ bgcolor: 'rgba(239,83,80,0.12)', color: '#EF5350', fontWeight: 700, border: '1px solid rgba(239,83,80,0.3)' }}
+                />
+              )}
             </Box>
           </Box>
         </motion.div>
@@ -660,9 +940,7 @@ function Dashboard() {
       >
         {STAT_CARDS.map((card, i) => (
           <Grid
-            item
-            xs={12}
-            sm={6}
+            size={{ xs: 12, sm: 6 }}
             key={card.key}
             sx={{ display: 'flex', justifyContent: 'center' }}
           >
@@ -717,12 +995,13 @@ function Dashboard() {
 
                 <Box>
                   <Chip
-                    label={`${100 - outageRate}% uptime`}
+                    label={`${stats.uptime != null ? stats.uptime.toFixed(1) : (100 - outageRate)}% uptime`}
                     size="small"
                     sx={{ bgcolor: `${healthColor}20`, color: healthColor, fontWeight: 700, border: `1px solid ${healthColor}40`, mb: 0.75 }}
                   />
                   <Typography variant="caption" color="text.secondary" display="block">
                     {stats.outages} outage{stats.outages !== 1 ? 's' : ''} / {timeRange}h
+                    {stats.avgPing != null && ` · ${stats.avgPing}ms ping`}
                   </Typography>
                 </Box>
               </Box>
@@ -944,6 +1223,309 @@ function Dashboard() {
                 </TableBody>
               </Table>
             </TableContainer>
+          )}
+        </Paper>
+      </motion.div>
+
+      {/* ── Internet Activity Cards ───────────────────────────────────────── */}
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.52 }}>
+        <Paper sx={{ p: 3, mb: 3, border: '1px solid rgba(240,194,75,0.18)', background: isDark ? '#080808' : '#fff' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, flexWrap: 'wrap', gap: 1 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>What Can You Do?</Typography>
+              <Typography variant="caption" color="text.secondary">Based on your current average download speed</Typography>
+            </Box>
+            {avgDownloadNum !== null && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ textAlign: 'center', px: 2, py: 0.75, borderRadius: 2, bgcolor: `${rating.color}18`, border: `1px solid ${rating.color}40` }}>
+                  <Typography sx={{ fontSize: '1.6rem', fontWeight: 900, color: rating.color, lineHeight: 1 }}>{rating.grade}</Typography>
+                  <Typography sx={{ fontSize: 10, color: rating.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{rating.label}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: '#f0c24b' }}>{avgDownloadNum} Mbps</Typography>
+                  <Typography variant="caption" color="text.secondary">avg download</Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
+          <Grid container spacing={1.5}>
+            {ACTIVITIES.map((act) => {
+              const ok = avgDownloadNum !== null && avgDownloadNum >= act.minDown;
+              const IconComp = act.icon;
+              return (
+                <Grid size={{ xs: 6, sm: 4, md: 2 }} key={act.label}>
+                  <motion.div whileHover={{ scale: 1.04 }} transition={{ duration: 0.2 }}>
+                    <Box
+                      sx={{
+                        p: 1.5, borderRadius: 2.5, textAlign: 'center',
+                        border: `1px solid ${ok ? act.color + '40' : 'rgba(255,255,255,0.06)'}`,
+                        bgcolor: ok ? `${act.color}12` : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
+                        opacity: ok ? 1 : 0.45,
+                        transition: 'all 0.3s ease',
+                      }}
+                    >
+                      <IconComp sx={{ fontSize: 26, color: ok ? act.color : 'text.disabled', mb: 0.5 }} />
+                      <Typography variant="caption" fontWeight={700} display="block" sx={{ color: ok ? act.color : 'text.disabled', lineHeight: 1.2 }}>
+                        {act.label}
+                      </Typography>
+                      <Typography variant="caption" display="block" sx={{ fontSize: 10, color: 'text.disabled', mt: 0.25 }}>
+                        {ok ? '✓ Supported' : `≥ ${act.minDown} Mbps`}
+                      </Typography>
+                    </Box>
+                  </motion.div>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </Paper>
+      </motion.div>
+
+      {/* ── Recent Speed Tests ────────────────────────────────────────────── */}
+      {measurements.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.56 }}>
+          <Paper sx={{ p: 3, border: '1px solid rgba(240,194,75,0.18)', background: isDark ? '#080808' : '#fff' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={700}>Recent Speed Tests</Typography>
+                <Typography variant="caption" color="text.secondary">Last {Math.min(measurements.length, 10)} measurements</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Tooltip title="Export as CSV">
+                  <IconButton onClick={exportCSV} size="small" sx={{ bgcolor: 'rgba(240,194,75,0.1)', color: '#f0c24b', border: '1px solid rgba(240,194,75,0.2)' }}>
+                    <FileDownloadIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Clear all test data">
+                  <IconButton onClick={() => setClearDialogOpen(true)} size="small" sx={{ bgcolor: 'rgba(239,83,80,0.08)', color: '#EF5350', border: '1px solid rgba(239,83,80,0.2)', '&:hover': { bgcolor: 'rgba(239,83,80,0.18)' } }}>
+                    <DeleteSweepIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+            <TableContainer sx={{ maxHeight: 340 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>Time</TableCell>
+                    <TableCell sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>Download</TableCell>
+                    <TableCell sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>Upload</TableCell>
+                    <TableCell sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>Ping</TableCell>
+                    <TableCell sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>ISP</TableCell>
+                    <TableCell align="center" sx={{ bgcolor: isDark ? '#0d0d0d' : '#fafafa', fontWeight: 700 }}>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {measurements.slice(0, 10).map((m, idx) => (
+                    <TableRow key={m.id} hover sx={{ '&:last-child td': { borderBottom: 0 }, opacity: idx === 0 ? 1 : 0.88 }}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                          <AccessTimeIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
+                          <Box>
+                            <Typography variant="caption" fontWeight={idx === 0 ? 700 : 500} display="block" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {parseTS(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }} display="block">
+                              {parseTS(m.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </Typography>
+                          </Box>
+                          {idx === 0 && <Chip label="Latest" size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, bgcolor: 'rgba(240,194,75,0.15)', color: '#f0c24b' }} />}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={700} sx={{ color: '#f0c24b' }}>
+                          {m.download_speed?.toFixed(1)} Mbps
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600} color="text.secondary">
+                          {m.upload_speed?.toFixed(1)} Mbps
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={`${m.ping?.toFixed(0)}ms`}
+                          size="small"
+                          sx={{
+                            height: 20, fontSize: 11, fontWeight: 700,
+                            bgcolor: m.ping < 30 ? 'rgba(67,160,71,0.15)' : m.ping < 80 ? 'rgba(255,167,38,0.15)' : 'rgba(239,83,80,0.15)',
+                            color: m.ping < 30 ? '#43A047' : m.ping < 80 ? '#FFA726' : '#EF5350',
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary" noWrap>{m.isp}</Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        {m.is_outage ? (
+                          <Chip label="Outage" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,83,80,0.15)', color: '#EF5350', fontWeight: 700 }} />
+                        ) : (
+                          <Chip label="OK" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(67,160,71,0.15)', color: '#43A047', fontWeight: 700 }} />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </motion.div>
+      )}
+
+      {/* ── Clear Data Confirmation Dialog ───────────────────────────────── */}
+      <Dialog
+        open={clearDialogOpen}
+        onClose={() => !clearing && setClearDialogOpen(false)}
+        PaperProps={{ sx: { background: '#0d0d0d', border: '1px solid rgba(239,83,80,0.3)', borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ color: '#EF5350', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DeleteSweepIcon /> Clear All Test Data?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            This will permanently delete <strong style={{ color: '#fff' }}>all {stats.total} speed test records</strong> and outage events.
+            This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button onClick={() => setClearDialogOpen(false)} disabled={clearing} sx={{ color: 'rgba(255,255,255,0.6)' }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleClear}
+            disabled={clearing}
+            variant="contained"
+            startIcon={clearing ? <CircularProgress size={14} color="inherit" /> : <DeleteSweepIcon />}
+            sx={{ bgcolor: '#EF5350', color: '#fff', fontWeight: 800, '&:hover': { bgcolor: '#C62828' }, '&:disabled': { bgcolor: 'rgba(239,83,80,0.3)' } }}
+          >
+            {clearing ? 'Clearing…' : 'Yes, Clear All'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Network Activity by App ───────────────────────────────────────── */}
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+        <Paper sx={{ p: 3, mt: 3, border: '1px solid rgba(240,194,75,0.18)', background: isDark ? '#080808' : '#fff' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, flexWrap: 'wrap', gap: 1.5 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>Live Network Activity</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Real-time bandwidth usage · apps with active connections · refreshes every 5s
+              </Typography>
+            </Box>
+            {networkUsage && (
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <DownloadIcon sx={{ fontSize: 14, color: '#f0c24b' }} />
+                    <Typography fontWeight={900} sx={{ color: '#f0c24b', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
+                      {networkUsage.download_mbps.toFixed(1)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#f0c24b', fontWeight: 700 }}>Mbps</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.disabled">Download now</Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <UploadIcon sx={{ fontSize: 14, color: isDark ? '#d0d0d0' : '#555' }} />
+                    <Typography fontWeight={900} sx={{ color: isDark ? '#d0d0d0' : '#333', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
+                      {networkUsage.upload_mbps.toFixed(1)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: isDark ? '#d0d0d0' : '#555', fontWeight: 700 }}>Mbps</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.disabled">Upload now</Typography>
+                </Box>
+                <Tooltip title="Session totals since boot">
+                  <Box sx={{ textAlign: 'center', px: 1.5, py: 0.5, borderRadius: 2, bgcolor: 'rgba(240,194,75,0.07)', border: '1px solid rgba(240,194,75,0.15)', cursor: 'help' }}>
+                    <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#f0c24b' }}>
+                      ↓ {networkUsage.total_recv_gb} GB
+                    </Typography>
+                    <Typography variant="caption" display="block" fontWeight={700} color="text.secondary">
+                      ↑ {networkUsage.total_sent_gb} GB
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: 9 }} color="text.disabled">since boot</Typography>
+                  </Box>
+                </Tooltip>
+              </Box>
+            )}
+          </Box>
+
+          {networkLoading && !networkUsage ? (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} variant="rectangular" width={140} height={60} sx={{ borderRadius: 2 }} />
+              ))}
+            </Box>
+          ) : networkUsage?.apps?.length > 0 ? (
+            <Box>
+              {/* Bandwidth bars */}
+              {networkUsage.download_mbps > 0 || networkUsage.upload_mbps > 0 ? (
+                <Box sx={{ mb: 2.5 }}>
+                  {[
+                    { label: 'Download', value: networkUsage.download_mbps, max: Math.max(networkUsage.download_mbps, 1), color: '#f0c24b' },
+                    { label: 'Upload',   value: networkUsage.upload_mbps,   max: Math.max(networkUsage.download_mbps, 1), color: isDark ? '#d0d0d0' : '#888' },
+                  ].map(({ label, value, max, color }) => (
+                    <Box key={label} sx={{ mb: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+                        <Typography variant="caption" fontWeight={700} sx={{ color }}>{label}</Typography>
+                        <Typography variant="caption" fontWeight={700} sx={{ color, fontVariantNumeric: 'tabular-nums' }}>{value.toFixed(2)} Mbps</Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min((value / max) * 100, 100)}
+                        sx={{
+                          height: 8, borderRadius: 4,
+                          bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                          '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 },
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              ) : null}
+
+              {/* Per-app list */}
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1, mb: 1.5, display: 'block' }}>
+                Apps with active connections
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                {networkUsage.apps.map((app, i) => (
+                  <motion.div key={app.name} whileHover={{ scale: 1.04 }} transition={{ duration: 0.2 }}>
+                    <Box
+                      sx={{
+                        px: 2, py: 1.25, borderRadius: 2.5,
+                        border: '1px solid rgba(240,194,75,0.18)',
+                        bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                        minWidth: 120,
+                        '&:hover': { bgcolor: isDark ? 'rgba(240,194,75,0.06)' : 'rgba(240,194,75,0.05)', borderColor: 'rgba(240,194,75,0.35)' },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                        <Box
+                          sx={{
+                            width: 28, height: 28, borderRadius: 1.5, flexShrink: 0,
+                            background: `linear-gradient(135deg, hsl(${(i * 47 + 200) % 360},60%,${isDark ? '30%' : '88%'}) 0%, hsl(${(i * 47 + 230) % 360},55%,${isDark ? '25%' : '78%'}) 100%)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <Typography fontWeight={900} fontSize={11} sx={{ color: isDark ? `hsl(${(i * 47 + 200) % 360},75%,80%)` : `hsl(${(i * 47 + 200) % 360},50%,30%)` }}>
+                            {app.name.charAt(0).toUpperCase()}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 90 }}>{app.name}</Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {app.connections} conn{app.connections !== 1 ? 's' : ''}
+                      </Typography>
+                    </Box>
+                  </motion.div>
+                ))}
+              </Box>
+            </Box>
+          ) : (
+            <Box sx={{ py: 4, textAlign: 'center' }}>
+              <WifiIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+              <Typography color="text.secondary">No active connections detected</Typography>
+            </Box>
           )}
         </Paper>
       </motion.div>

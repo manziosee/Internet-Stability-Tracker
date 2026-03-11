@@ -165,7 +165,13 @@ class TursoCursor:
 # ─── Type helpers ─────────────────────────────────────────────────────────────
 
 def _encode_args(params: Sequence) -> list:
-    """Convert Python values to Turso's typed arg format."""
+    """Convert Python values to Turso's typed arg format.
+
+    Turso pipeline API rules:
+    - integer.value  → JSON string  (i64 precision)
+    - float.value    → JSON number  (f64, NOT a string)
+    - text/null      → as expected
+    """
     out = []
     for p in params:
         if p is None:
@@ -175,7 +181,7 @@ def _encode_args(params: Sequence) -> list:
         elif isinstance(p, int):
             out.append({"type": "integer", "value": str(p)})
         elif isinstance(p, float):
-            out.append({"type": "float", "value": str(p)})
+            out.append({"type": "float", "value": float(p)})   # must be JSON number
         else:
             out.append({"type": "text", "value": str(p)})
     return out

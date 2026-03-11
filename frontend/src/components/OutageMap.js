@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { getOutages, getReports } from '../services/api';
+import { getOutages, getReports, getRecentMeasurements } from '../services/api';
 import {
   Box, Typography, Paper, Chip, ToggleButtonGroup, ToggleButton,
   List, ListItem, ListItemText, Divider, Skeleton
@@ -32,6 +32,7 @@ function createMarker(color, letter) {
 
 const outageMarker = createMarker('#E53935', '!');
 const reportMarker = createMarker('#F57C00', 'R');
+const monitorMarker = createMarker('#43A047', '✓');
 
 const ISSUE_LABELS = {
   outage: 'Complete Outage',
@@ -40,23 +41,25 @@ const ISSUE_LABELS = {
   other: 'Other',
 };
 
-function MapAutoFit({ outages, reports }) {
+function MapAutoFit({ outages, reports, monitors }) {
   const map = useMap();
   useEffect(() => {
     const points = [
       ...outages.filter((o) => o.latitude && o.longitude).map((o) => [o.latitude, o.longitude]),
       ...reports.filter((r) => r.latitude && r.longitude).map((r) => [r.latitude, r.longitude]),
+      ...monitors.filter((m) => m.latitude && m.longitude).map((m) => [m.latitude, m.longitude]),
     ];
     if (points.length > 0) {
       map.fitBounds(points, { padding: [40, 40], maxZoom: 10 });
     }
-  }, [outages, reports, map]);
+  }, [outages, reports, monitors, map]);
   return null;
 }
 
 function OutageMap() {
   const [outages, setOutages] = useState([]);
   const [reports, setReports] = useState([]);
+  const [monitors, setMonitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layer, setLayer] = useState('both');
 
@@ -68,12 +71,15 @@ function OutageMap() {
 
   const fetchData = async () => {
     try {
-      const [outRes, repRes] = await Promise.all([
+      const [outRes, repRes, measRes] = await Promise.all([
         getOutages(),
         getReports(),
+        getRecentMeasurements(48),
       ]);
       setOutages(outRes.data.filter((o) => o.latitude && o.longitude));
       setReports(repRes.data.filter((r) => r.latitude && r.longitude));
+      // Only show non-outage measurements that have coordinates as monitoring points
+      setMonitors(measRes.data.filter((m) => m.latitude && m.longitude && !m.is_outage));
     } catch (err) {
       console.error('Error fetching map data:', err);
     } finally {
@@ -83,6 +89,7 @@ function OutageMap() {
 
   const visibleOutages = layer === 'both' || layer === 'outages' ? outages : [];
   const visibleReports = layer === 'both' || layer === 'reports' ? reports : [];
+  const visibleMonitors = layer === 'both' || layer === 'monitors' ? monitors : [];
 
   return (
     <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1280, mx: 'auto' }}>
@@ -136,19 +143,26 @@ function OutageMap() {
             <ToggleButton value="reports">
               <PeopleIcon sx={{ fontSize: 15, mr: 0.5 }} /> Reports
             </ToggleButton>
+            <ToggleButton value="monitors">
+              Monitoring
+            </ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
           <Chip
-            label={`Automated outages: ${outages.length}`}
+            label={`Outages: ${outages.length}`}
             icon={<WarningAmberIcon fontSize="small" />}
-            sx={{ bgcolor: 'rgba(245,194,75,0.15)', color: '#f0c24b', fontWeight: 700, border: '1px solid rgba(240,194,75,0.25)' }}
+            sx={{ bgcolor: 'rgba(239,83,80,0.12)', color: '#EF5350', fontWeight: 700, border: '1px solid rgba(239,83,80,0.25)' }}
           />
           <Chip
-            label={`Community reports: ${reports.length}`}
+            label={`Reports: ${reports.length}`}
             icon={<PeopleIcon fontSize="small" />}
-            sx={{ bgcolor: 'rgba(245,194,75,0.1)', color: '#f0c24b', fontWeight: 700, border: '1px solid rgba(240,194,75,0.22)' }}
+            sx={{ bgcolor: 'rgba(245,124,0,0.12)', color: '#F57C00', fontWeight: 700, border: '1px solid rgba(245,124,0,0.25)' }}
+          />
+          <Chip
+            label={`Monitoring: ${monitors.length}`}
+            sx={{ bgcolor: 'rgba(67,160,71,0.12)', color: '#43A047', fontWeight: 700, border: '1px solid rgba(67,160,71,0.25)' }}
           />
           <Chip
             label="Auto-fit enabled"
@@ -183,7 +197,7 @@ function OutageMap() {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
-                <MapAutoFit outages={visibleOutages} reports={visibleReports} />
+                <MapAutoFit outages={visibleOutages} reports={visibleReports} monitors={visibleMonitors} />
 
                 {visibleOutages.map((outage) => (
                   <Marker key={`outage-${outage.id}`} position={[outage.latitude, outage.longitude]} icon={outageMarker}>
@@ -201,6 +215,26 @@ function OutageMap() {
                         </Typography>
                         <Typography fontSize={12} color="text.secondary" mt={0.5}>
                           {new Date(outage.timestamp).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </Popup>
+                  </Marker>
+                ))}
+
+                {visibleMonitors.map((m) => (
+                  <Marker key={`monitor-${m.id}`} position={[m.latitude, m.longitude]} icon={monitorMarker}>
+                    <Popup>
+                      <Box sx={{ minWidth: 180 }}>
+                        <Typography fontWeight={700} fontSize={14} color="#43A047" mb={0.5}>
+                          Monitoring Point
+                        </Typography>
+                        <Typography fontSize={13}><strong>ISP:</strong> {m.isp}</Typography>
+                        {m.location && <Typography fontSize={13}><strong>Location:</strong> {m.location}</Typography>}
+                        <Typography fontSize={13}><strong>Download:</strong> {m.download_speed?.toFixed(1)} Mbps</Typography>
+                        <Typography fontSize={13}><strong>Upload:</strong> {m.upload_speed?.toFixed(1)} Mbps</Typography>
+                        <Typography fontSize={13}><strong>Ping:</strong> {m.ping?.toFixed(0)} ms</Typography>
+                        <Typography fontSize={12} color="text.secondary" mt={0.5}>
+                          {new Date(m.timestamp).toLocaleString()}
                         </Typography>
                       </Box>
                     </Popup>
@@ -236,18 +270,18 @@ function OutageMap() {
           )}
 
           {/* Legend */}
-          <Box sx={{ display: 'flex', gap: 2, mt: 1.5 }}>
+          <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#E53935' }} />
-              <Typography variant="caption" color="text.secondary">
-                Automated outage ({outages.length})
-              </Typography>
+              <Typography variant="caption" color="text.secondary">Outage ({outages.length})</Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#F57C00' }} />
-              <Typography variant="caption" color="text.secondary">
-                Community report ({reports.length})
-              </Typography>
+              <Typography variant="caption" color="text.secondary">Report ({reports.length})</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#43A047' }} />
+              <Typography variant="caption" color="text.secondary">Monitoring ({monitors.length})</Typography>
             </Box>
           </Box>
         </Box>
@@ -266,11 +300,12 @@ function OutageMap() {
             ) : (
               <List dense disablePadding>
                 {[
-                  ...outages.slice(0, 8).map((o) => ({ ...o, _type: 'outage' })),
-                  ...reports.slice(0, 8).map((r) => ({ ...r, _type: 'report' })),
+                  ...outages.slice(0, 5).map((o) => ({ ...o, _type: 'outage' })),
+                  ...reports.slice(0, 5).map((r) => ({ ...r, _type: 'report' })),
+                  ...monitors.slice(0, 5).map((m) => ({ ...m, _type: 'monitor' })),
                 ]
                   .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                  .slice(0, 10)
+                  .slice(0, 12)
                   .map((item, idx) => (
                     <React.Fragment key={`${item._type}-${item.id}`}>
                       {idx > 0 && <Divider />}
@@ -279,11 +314,11 @@ function OutageMap() {
                           primary={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Chip
-                                label={item._type === 'outage' ? 'Outage' : 'Report'}
+                                label={item._type === 'outage' ? 'Outage' : item._type === 'report' ? 'Report' : 'OK'}
                                 size="small"
                                 sx={{
-                                  bgcolor: item._type === 'outage' ? '#FFEBEE' : '#FFF3E0',
-                                  color: item._type === 'outage' ? '#E53935' : '#F57C00',
+                                  bgcolor: item._type === 'outage' ? '#FFEBEE' : item._type === 'report' ? '#FFF3E0' : '#E8F5E9',
+                                  color: item._type === 'outage' ? '#E53935' : item._type === 'report' ? '#F57C00' : '#43A047',
                                   fontWeight: 700,
                                   fontSize: 10,
                                   height: 20,
@@ -309,9 +344,9 @@ function OutageMap() {
                       </ListItem>
                     </React.Fragment>
                   ))}
-                {outages.length === 0 && reports.length === 0 && (
+                {outages.length === 0 && reports.length === 0 && monitors.length === 0 && (
                   <Typography color="text.secondary" variant="body2" py={2} textAlign="center">
-                    No incidents reported yet
+                    No activity yet — run a speed test with location enabled
                   </Typography>
                 )}
               </List>

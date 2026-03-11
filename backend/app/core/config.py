@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     # ── App ─────────────────────────────────────────────────────────────────
     SECRET_KEY: str = "changeme-in-production"
     ENVIRONMENT: str = "development"
-    SPEED_TEST_INTERVAL: int = 300              # seconds between auto-tests
+    SPEED_TEST_INTERVAL: int = 300              # seconds between auto-tests (if enabled)
+    AUTO_SPEED_TEST: bool = False               # set True to enable background scheduler
     OUTAGE_THRESHOLD_MBPS: float = 1.0          # below this = outage
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
     MAX_HISTORY_HOURS: int = 168                # 7 days max for history queries
