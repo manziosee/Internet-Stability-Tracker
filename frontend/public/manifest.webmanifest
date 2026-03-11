@@ -1,0 +1,20 @@
+{
+  "short_name": "IST",
+  "name": "Internet Stability Tracker",
+  "description": "Community network monitoring platform — track outages, compare ISPs, and monitor real-time speeds.",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#f0c24b",
+  "background_color": "#0a0800",
+  "orientation": "any",
+  "categories": ["utilities", "productivity"],
+  "screenshots": []
+}
