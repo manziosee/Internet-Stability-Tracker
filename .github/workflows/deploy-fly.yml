@@ -1,0 +1,31 @@
+# ── Deploy to Fly.io ──────────────────────────────────────────────────────────
+# Triggered on every push to main.
+# Required GitHub Actions secret:  FLY_API_TOKEN
+#   Get it with:  fly tokens create deploy -x 999999h
+#   Add it at:    Settings → Secrets → Actions → New repository secret
+
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:     # allow manual re-deploy from the Actions tab
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fly-deploy
+      cancel-in-progress: false   # never cancel a running deploy mid-flight
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --wait-timeout 180

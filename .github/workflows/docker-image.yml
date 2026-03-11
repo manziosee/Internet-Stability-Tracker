@@ -30,9 +30,11 @@ jobs:
 
       - name: Run tests
         env:
-          TURSO_DB_URL: ${{ secrets.TURSO_DB_URL || 'libsql://test.turso.io' }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN || 'test-token' }}
-          SECRET_KEY: test-secret
+          # CI uses stub values — real secrets are only needed for deployment
+          TURSO_DB_URL: "libsql://ci-test.turso.io"
+          TURSO_AUTH_TOKEN: "ci-test-token"
+          SECRET_KEY: "ci-test-secret-key-not-used-in-production"
+          ADMIN_API_KEY: "ci-admin-key"
           ENVIRONMENT: test
         run: pytest tests/ -v --tb=short || true
 

@@ -44,3 +44,35 @@ export const getNetworkUsage = () =>
 
 export const clearMeasurements = () =>
   api.delete('/measurements');
+
+// ── New endpoints ──────────────────────────────────────────────────────────────
+
+export const getQualityScore = (hours = 24) =>
+  api.get(`/quality-score?hours=${hours}`);
+
+export const getGlobalStatus = () =>
+  api.get('/status');
+
+export const getTimeline = (days = 30) =>
+  api.get(`/timeline?days=${days}`);
+
+export const getISPRankings = (hours = 168) =>
+  api.get(`/isp-rankings?hours=${hours}`);
+
+export const getOutageConfidence = () =>
+  api.get('/outage-confidence');
+
+export const confirmReport = (id) =>
+  api.post(`/reports/${id}/confirm`);
+
+export const rejectReport = (id) =>
+  api.post(`/reports/${id}/reject`);
+
+export const getDiagnostics = () =>
+  api.get('/diagnostics');
+
+export const getAIInsights = (hours = 168) =>
+  api.get(`/ai-insights?hours=${hours}`);
+
+export const getMyConnection = () =>
+  api.get('/my-connection');
