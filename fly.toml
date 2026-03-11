@@ -6,7 +6,7 @@
 #   fly secrets set TURSO_DB_URL=libsql://... TURSO_AUTH_TOKEN=... SECRET_KEY=...
 #   fly deploy
 
-app            = "internet-stability-tracker"
+app = "backend-cold-butterfly-9535"
 primary_region = "jnb"       # Johannesburg — closest Fly region to East Africa
 
 # ── Build ─────────────────────────────────────────────────────────────────────
