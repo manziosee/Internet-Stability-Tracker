@@ -38,13 +38,6 @@ const gradeColor = (g) => {
   return '#B71C1C';
 };
 
-const scoreToColor = (s) => {
-  if (s >= 80) return '#43A047';
-  if (s >= 60) return '#FFA726';
-  if (s >= 40) return '#EF5350';
-  return '#B71C1C';
-};
-
 const statusColor = {
   excellent: '#43A047',
   good: '#66BB6A',
