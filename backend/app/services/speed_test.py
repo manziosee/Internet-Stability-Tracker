@@ -68,6 +68,7 @@ class SpeedTestService:
         location: str = None,
         lat: float = None,
         lon: float = None,
+        client_id: str = None,
     ) -> SpeedMeasurement:
         measurement = SpeedMeasurement(
             download_speed=result["download"],
@@ -78,6 +79,7 @@ class SpeedTestService:
             latitude=lat,
             longitude=lon,
             is_outage=result["is_outage"],
+            client_id=client_id,
         )
         db.add(measurement)
         db.flush()  # assign ID before referencing

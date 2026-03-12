@@ -30,6 +30,30 @@ def require_admin_key(x_admin_key: str = Header(default="")):
         raise HTTPException(status_code=403, detail="Forbidden — invalid admin key.")
 
 
+# ─── Per-device client ID ─────────────────────────────────────────────────────
+
+import re as _re
+_UUID_RE = _re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    _re.IGNORECASE,
+)
+
+def get_client_id(x_client_id: str = Header(default="")) -> Optional[str]:
+    """Extract and validate the X-Client-ID header (UUID v4 format).
+    Returns None if missing or malformed — callers must handle the empty case."""
+    if x_client_id and _UUID_RE.match(x_client_id):
+        return x_client_id.lower()
+    return None
+
+
+def _scope(query, client_id: Optional[str]):
+    """Apply client_id filter to a SpeedMeasurement query.
+    If no client_id provided, return nothing — never leak other users' data."""
+    if not client_id:
+        return query.filter(False)
+    return query.filter(SpeedMeasurement.client_id == client_id)
+
+
 # ─── Pydantic schemas ────────────────────────────────────────────────────────
 
 class MeasurementResponse(BaseModel):
@@ -142,9 +166,10 @@ def get_measurements(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     return (
-        db.query(SpeedMeasurement)
+        _scope(db.query(SpeedMeasurement), client_id)
         .order_by(desc(SpeedMeasurement.timestamp))
         .offset(skip)
         .limit(limit)
@@ -157,10 +182,11 @@ def get_measurements(
 def get_recent_measurements(
     hours: int = Query(24, ge=1, le=settings.MAX_HISTORY_HOURS),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     return (
-        db.query(SpeedMeasurement)
+        _scope(db.query(SpeedMeasurement), client_id)
         .filter(SpeedMeasurement.timestamp >= cutoff)
         .order_by(desc(SpeedMeasurement.timestamp))
         .all()
@@ -174,11 +200,12 @@ def get_recent_measurements(
 def get_stats(
     hours: int = Query(24, ge=1, le=settings.MAX_HISTORY_HOURS),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     """Aggregated summary for a given time window."""
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     rows = (
-        db.query(SpeedMeasurement)
+        _scope(db.query(SpeedMeasurement), client_id)
         .filter(SpeedMeasurement.timestamp >= cutoff)
         .all()
     )
@@ -211,7 +238,7 @@ def get_stats(
 
 @router.get("/alerts", response_model=AlertSummary, tags=["alerts"],
             summary="Current alert status", description="Returns whether there is an active outage right now, the 48-hour outage count, and recent outage events.")
-def get_alerts(db: Session = Depends(get_db)):
+def get_alerts(db: Session = Depends(get_db), client_id: Optional[str] = Depends(get_client_id)):
     """Returns current outage status using OutageEvent table."""
     cutoff = datetime.utcnow() - timedelta(hours=48)
 
@@ -224,10 +251,10 @@ def get_alerts(db: Session = Depends(get_db)):
     )
     current_outage = open_event is not None
 
-    # Also fall back to latest measurement if no outage events recorded yet
+    # Also fall back to latest measurement for this device if no outage events recorded yet
     if not current_outage:
         latest = (
-            db.query(SpeedMeasurement)
+            _scope(db.query(SpeedMeasurement), client_id)
             .order_by(desc(SpeedMeasurement.timestamp))
             .first()
         )
@@ -276,9 +303,10 @@ def get_alerts(db: Session = Depends(get_db)):
 def get_outages(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     return (
-        db.query(SpeedMeasurement)
+        _scope(db.query(SpeedMeasurement), client_id)
         .filter(SpeedMeasurement.is_outage == True)
         .order_by(desc(SpeedMeasurement.timestamp))
         .limit(limit)
@@ -446,24 +474,15 @@ def get_isp_reliability(
 # ─── Real-time network usage ─────────────────────────────────────────────────
 
 @router.get("/network-usage", tags=["network"],
-            summary="Live network usage", description="1-second bandwidth sample (download/upload Mbps) plus a list of processes that have active ESTABLISHED TCP connections. Uses psutil — no root required.")
+            summary="Live network usage", description="Active TCP connections per process. Bandwidth (download_mbps/upload_mbps) is measured client-side via /bandwidth-probe. Uses psutil — no root required.")
 def get_network_usage():
     """
-    Returns real-time system bandwidth (sampled over 1 second) and
-    a list of processes that have active network connections.
-    Uses psutil — no root required.
+    Returns per-process active TCP connections and interface totals.
+    Bandwidth figures (download_mbps / upload_mbps) are intentionally null —
+    they are measured in the browser via /bandwidth-probe for accuracy.
     """
     try:
         import psutil
-
-        # ── 1-second bandwidth sample ────────────────────────────────────────
-        s1 = psutil.net_io_counters()
-        time.sleep(1)
-        s2 = psutil.net_io_counters()
-        download_bps = max(0, s2.bytes_recv - s1.bytes_recv)
-        upload_bps   = max(0, s2.bytes_sent - s1.bytes_sent)
-        download_mbps = round(download_bps * 8 / 1_000_000, 2)
-        upload_mbps   = round(upload_bps   * 8 / 1_000_000, 2)
 
         # ── Per-process connections ───────────────────────────────────────────
         conns = psutil.net_connections(kind="inet")
@@ -503,8 +522,8 @@ def get_network_usage():
         total = psutil.net_io_counters()
 
         return {
-            "download_mbps": download_mbps,
-            "upload_mbps": upload_mbps,
+            "download_mbps": None,   # measured client-side via /bandwidth-probe
+            "upload_mbps":   None,   # measured client-side via /bandwidth-probe
             "total_sent_gb": round(total.bytes_sent / 1e9, 3),
             "total_recv_gb": round(total.bytes_recv / 1e9, 3),
             "apps": top_apps,
@@ -517,18 +536,54 @@ def get_network_usage():
         raise HTTPException(status_code=500, detail="Internal server error.")
 
 
+# ─── Bandwidth probe (browser-side speed measurement) ────────────────────────
+
+@router.get("/bandwidth-probe", tags=["network"], include_in_schema=False)
+def bandwidth_probe_download(size_kb: int = Query(default=256, ge=4, le=512)):
+    """
+    Returns a fixed-size binary response so the browser can time the download
+    and compute the user's real connection speed in Mbps.
+    Cache-Control is set to no-store to prevent CDN / proxy caching.
+    """
+    from fastapi.responses import Response as _RawResponse
+    payload = b"\x00" * (min(size_kb, 512) * 1024)
+    return _RawResponse(
+        content=payload,
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store, no-cache", "Pragma": "no-cache"},
+    )
+
+
+@router.post("/bandwidth-probe", tags=["network"], include_in_schema=False)
+async def bandwidth_probe_upload(request: Request):
+    """
+    Accepts any body so the browser can time the upload round-trip
+    and compute the user's real upload speed in Mbps.
+    """
+    _ = await request.body()  # consume and discard
+    return {"ok": True}
+
+
 # ─── Clear all measurements ──────────────────────────────────────────────────
 
 @router.delete("/measurements", status_code=200, tags=["measurements"],
                summary="Clear all measurements",
                description="Permanently deletes all speed test records and associated outage events. **Requires `X-Admin-Key` header.** Irreversible.")
-def clear_measurements(db: Session = Depends(get_db), _: None = Depends(require_admin_key)):
-    """Delete all speed measurements and associated outage events."""
-    deleted = db.query(SpeedMeasurement).delete(synchronize_session=False)
-    db.query(OutageEvent).delete(synchronize_session=False)
+def clear_measurements(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Delete speed measurements — scoped to the caller's client_id if provided, else all."""
+    q = db.query(SpeedMeasurement)
+    if client_id:
+        q = q.filter(SpeedMeasurement.client_id == client_id)
+    deleted = q.delete(synchronize_session=False)
+    if not client_id:
+        db.query(OutageEvent).delete(synchronize_session=False)
     db.commit()
-    logger.info("Cleared all measurements (%d rows deleted)", deleted)
-    return {"deleted": deleted, "message": "All measurements cleared."}
+    logger.info("Cleared measurements (client=%s, %d rows deleted)", client_id, deleted)
+    return {"deleted": deleted, "message": "Measurements cleared."}
 
 
 # ─── On-demand speed test ─────────────────────────────────────────────────────
@@ -540,12 +595,13 @@ async def run_test_now(
     lat: Optional[float] = None,
     lon: Optional[float] = None,
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     try:
         service = SpeedTestService()
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, service.measure_speeds)
-        return SpeedTestService._save(db, result, location, lat, lon)
+        return SpeedTestService._save(db, result, location, lat, lon, client_id)
     except Exception as exc:
         logger.error("test-now endpoint failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Speed test failed. Please try again later.")
@@ -566,9 +622,10 @@ class QualityScore(BaseModel):
 def get_quality_score(
     hours: int = Query(24, ge=1, le=settings.MAX_HISTORY_HOURS),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     cutoff = datetime.utcnow() - timedelta(hours=hours)
-    rows = db.query(SpeedMeasurement).filter(SpeedMeasurement.timestamp >= cutoff).all()
+    rows = _scope(db.query(SpeedMeasurement), client_id).filter(SpeedMeasurement.timestamp >= cutoff).all()
 
     if not rows:
         return QualityScore(score=0, grade="N/A", label="No Data", breakdown={
@@ -686,50 +743,192 @@ def get_global_status(db: Session = Depends(get_db)):
 def get_timeline(
     days: int = Query(30, ge=1, le=90),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
+    timeline: list = []
 
-    events = (
+    # ── 1. Discrete OutageEvent records (created by scheduler) ────────────────
+    oe_rows = (
         db.query(OutageEvent)
         .filter(OutageEvent.started_at >= cutoff)
         .order_by(desc(OutageEvent.started_at))
         .all()
     )
-
-    timeline = []
-    for e in events:
+    oe_ids = set()
+    for e in oe_rows:
+        oe_ids.add(e.id)
         dur = None
         if e.ended_at and e.started_at:
             dur = round((e.ended_at - e.started_at).total_seconds() / 60, 1)
-
         if e.avg_download is None or e.avg_download == 0:
-            severity = "critical"
-            event_type = "outage"
+            severity, event_type = "critical", "outage"
         elif e.avg_download < 0.5:
-            severity = "high"
-            event_type = "outage"
+            severity, event_type = "high", "outage"
         elif not e.is_resolved:
-            severity = "medium"
-            event_type = "degradation"
+            severity, event_type = "medium", "degradation"
         else:
-            severity = "low"
-            event_type = "recovery"
-
+            severity, event_type = "low", "recovery"
         timeline.append({
-            "id":               e.id,
-            "event_type":       event_type,
-            "severity":         severity,
-            "started_at":       e.started_at.isoformat(),
-            "ended_at":         e.ended_at.isoformat() if e.ended_at else None,
-            "isp":              e.isp,
-            "location":         e.location,
-            "avg_download":     round(e.avg_download, 2) if e.avg_download is not None else None,
+            "id": f"oe-{e.id}",
+            "event_type": event_type,
+            "severity": severity,
+            "started_at": e.started_at.isoformat(),
+            "ended_at": e.ended_at.isoformat() if e.ended_at else None,
+            "isp": e.isp,
+            "location": e.location,
+            "avg_download": round(e.avg_download, 2) if e.avg_download is not None else None,
             "duration_minutes": dur,
-            "is_resolved":      e.is_resolved,
+            "is_resolved": e.is_resolved,
             "measurement_count": e.measurement_count,
         })
 
-    return {"days": days, "total": len(timeline), "events": timeline}
+    # ── 2. Derive events from SpeedMeasurement history ────────────────────────
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+
+    if measurements:
+        normal = [m for m in measurements if not m.is_outage and m.download_speed > 0]
+        baseline = (sum(m.download_speed for m in normal) / len(normal)) if normal else 1.0
+
+        OUTAGE_THR      = 0.10   # < 10 % of baseline = outage
+        DEGRADE_THR     = 0.60   # < 60 % of baseline = degradation
+        RECOVER_THR     = 0.80   # ≥ 80 % = back to normal
+
+        prev_state   = "normal"
+        group: list  = []
+
+        def _flush(state: str, grp: list, resolved: bool) -> Optional[dict]:
+            if not grp:
+                return None
+            avg_dl = round(sum(m.download_speed for m in grp) / len(grp), 2)
+            avg_ul = round(sum(m.upload_speed  for m in grp) / len(grp), 2)
+            avg_pg = round(sum(m.ping           for m in grp) / len(grp), 1)
+            start  = grp[0].timestamp
+            end    = grp[-1].timestamp
+            dur    = round((end - start).total_seconds() / 60, 1)
+            if state == "outage":
+                etype, sev = "outage", ("critical" if avg_dl < baseline * 0.02 else "high")
+            else:
+                etype, sev = "degradation", ("high" if avg_dl < baseline * 0.30 else "medium")
+            return {
+                "id": f"sm-{grp[0].id}",
+                "event_type": etype,
+                "severity": sev,
+                "started_at": start.isoformat(),
+                "ended_at": end.isoformat(),
+                "isp": grp[0].isp,
+                "location": grp[0].location,
+                "avg_download": avg_dl,
+                "avg_upload": avg_ul,
+                "avg_ping": avg_pg,
+                "duration_minutes": dur,
+                "is_resolved": resolved,
+                "measurement_count": len(grp),
+            }
+
+        for m in measurements:
+            if m.is_outage or m.download_speed < baseline * OUTAGE_THR:
+                state = "outage"
+            elif m.download_speed < baseline * DEGRADE_THR:
+                state = "degradation"
+            else:
+                state = "normal"
+
+            if state != prev_state:
+                if prev_state in ("outage", "degradation"):
+                    ev = _flush(prev_state, group, resolved=True)
+                    if ev:
+                        timeline.append(ev)
+                    # Add a recovery marker when returning to normal
+                    if state == "normal":
+                        timeline.append({
+                            "id": f"rec-{m.id}",
+                            "event_type": "recovery",
+                            "severity": "low",
+                            "started_at": m.timestamp.isoformat(),
+                            "ended_at": m.timestamp.isoformat(),
+                            "isp": m.isp,
+                            "location": m.location,
+                            "avg_download": round(m.download_speed, 2),
+                            "duration_minutes": 0,
+                            "is_resolved": True,
+                            "measurement_count": 1,
+                        })
+                group = [m]
+            else:
+                group.append(m)
+            prev_state = state
+
+        # Flush last open group
+        if prev_state in ("outage", "degradation") and group:
+            ev = _flush(prev_state, group, resolved=False)
+            if ev:
+                timeline.append(ev)
+
+        # ── 3. Speed-change snapshots (every measurement becomes a record) ────
+        # This ensures the timeline always has data, not just when there's an outage.
+        for m in reversed(measurements):  # newest first
+            timeline.append({
+                "id": f"snap-{m.id}",
+                "event_type": "outage" if m.is_outage else (
+                    "degradation" if m.download_speed < baseline * DEGRADE_THR else "recovery"
+                ),
+                "severity": (
+                    "critical" if m.is_outage and m.download_speed < baseline * 0.02 else
+                    "high"     if m.is_outage or m.download_speed < baseline * OUTAGE_THR else
+                    "medium"   if m.download_speed < baseline * DEGRADE_THR else
+                    "low"
+                ),
+                "started_at": m.timestamp.isoformat(),
+                "ended_at": m.timestamp.isoformat(),
+                "isp": m.isp,
+                "location": m.location,
+                "avg_download": round(m.download_speed, 2),
+                "avg_upload": round(m.upload_speed, 2),
+                "avg_ping": round(m.ping, 1),
+                "duration_minutes": None,
+                "is_resolved": True,
+                "measurement_count": 1,
+            })
+
+    # ── 4. Community reports ───────────────────────────────────────────────────
+    cr_rows = (
+        db.query(CommunityReport)
+        .filter(CommunityReport.timestamp >= cutoff)
+        .order_by(desc(CommunityReport.timestamp))
+        .limit(20)
+        .all()
+    )
+    for r in cr_rows:
+        sev_map = {"outage": "high", "slow": "medium", "intermittent": "medium"}
+        timeline.append({
+            "id": f"cr-{r.id}",
+            "event_type": "degradation" if r.issue_type != "outage" else "outage",
+            "severity": sev_map.get(r.issue_type, "medium"),
+            "started_at": r.timestamp.isoformat(),
+            "ended_at": None,
+            "isp": r.isp,
+            "location": r.location,
+            "avg_download": None,
+            "duration_minutes": None,
+            "is_resolved": r.status == "resolved",
+            "measurement_count": r.confirmations + 1,
+        })
+
+    # ── Sort newest-first, deduplicate by id ──────────────────────────────────
+    seen: set = set()
+    unique: list = []
+    for ev in sorted(timeline, key=lambda x: x["started_at"], reverse=True):
+        if ev["id"] not in seen:
+            seen.add(ev["id"])
+            unique.append(ev)
+
+    return {"days": days, "total": len(unique), "events": unique}
 
 
 # ─── ISP Reputation Rankings ──────────────────────────────────────────────────
@@ -817,11 +1016,11 @@ def get_isp_rankings(
 
 @router.get("/outage-confidence", tags=["alerts"],
             summary="Smart outage confidence score", description="Combines failed speed tests, community reports, and open outage events to produce an outage confidence score (0–100%).")
-def get_outage_confidence(db: Session = Depends(get_db)):
+def get_outage_confidence(db: Session = Depends(get_db), client_id: Optional[str] = Depends(get_client_id)):
     cutoff_1h  = datetime.utcnow() - timedelta(hours=1)
     cutoff_6h  = datetime.utcnow() - timedelta(hours=6)
 
-    recent_measurements = db.query(SpeedMeasurement).filter(
+    recent_measurements = _scope(db.query(SpeedMeasurement), client_id).filter(
         SpeedMeasurement.timestamp >= cutoff_1h
     ).all()
     failed_tests = sum(1 for r in recent_measurements if r.is_outage)
@@ -1057,12 +1256,13 @@ def get_diagnostics():
 def get_ai_insights(
     hours: int = Query(168, ge=24, le=settings.MAX_HISTORY_HOURS),
     db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
 ):
     from collections import defaultdict
     import statistics
 
     cutoff = datetime.utcnow() - timedelta(hours=hours)
-    rows = db.query(SpeedMeasurement).filter(SpeedMeasurement.timestamp >= cutoff).all()
+    rows = _scope(db.query(SpeedMeasurement), client_id).filter(SpeedMeasurement.timestamp >= cutoff).all()
 
     if len(rows) < 3:
         return {
@@ -1197,3 +1397,298 @@ def get_ai_insights(
         "hours_analyzed": hours,
         "overall_avg_download": round(overall_avg, 2),
     }
+
+
+# ─── Congestion heatmap ──────────────────────────────────────────────────────
+
+@router.get("/congestion-heatmap", tags=["insights"],
+            summary="Congestion heatmap",
+            description="7-day × 24-hour grid of average download speed.")
+def get_congestion_heatmap(
+    days: int = Query(default=28, ge=7, le=90),
+    client_id: Optional[str] = Depends(get_client_id),
+    db: Session = Depends(get_db),
+):
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = _scope(
+        db.query(SpeedMeasurement.timestamp, SpeedMeasurement.download_speed),
+        client_id,
+    ).filter(SpeedMeasurement.timestamp >= since).all()
+
+    grid: dict = {}
+    for ts, dl in rows:
+        if dl is None:
+            continue
+        dow = ts.weekday()
+        hr  = ts.hour
+        grid.setdefault(dow, {}).setdefault(hr, []).append(dl)
+
+    DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    cells = []
+    for dow in range(7):
+        for hr in range(24):
+            vals = grid.get(dow, {}).get(hr, [])
+            avg  = round(sum(vals) / len(vals), 2) if vals else None
+            cells.append({"day": dow, "day_name": DAY_NAMES[dow], "hour": hr,
+                          "avg_mbps": avg, "samples": len(vals)})
+
+    return {"cells": cells, "days_analyzed": days, "total_samples": len(rows)}
+
+
+# ─── Historical comparison ────────────────────────────────────────────────────
+
+@router.get("/comparison", tags=["stats"],
+            summary="Week-over-week comparison",
+            description="Compares avg download/upload/ping and outage count between this week and last week.")
+def get_comparison(
+    client_id: Optional[str] = Depends(get_client_id),
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+    w1_start = now - timedelta(days=7)
+    w2_start = now - timedelta(days=14)
+
+    def _stats(since, until):
+        rows = _scope(db.query(SpeedMeasurement), client_id).filter(
+            SpeedMeasurement.timestamp >= since,
+            SpeedMeasurement.timestamp < until,
+        ).all()
+        if not rows:
+            return None
+        dls   = [r.download_speed for r in rows if r.download_speed is not None]
+        uls   = [r.upload_speed   for r in rows if r.upload_speed   is not None]
+        pings = [r.ping           for r in rows if r.ping           is not None]
+        out   = sum(1 for r in rows if r.is_outage)
+        return {
+            "avg_download": round(sum(dls)/len(dls),   2) if dls   else None,
+            "avg_upload":   round(sum(uls)/len(uls),   2) if uls   else None,
+            "avg_ping":     round(sum(pings)/len(pings),1) if pings else None,
+            "outages":      out,
+            "total":        len(rows),
+            "uptime_pct":   round((1 - out / len(rows)) * 100, 1),
+        }
+
+    this_week = _stats(w1_start, now)
+    last_week = _stats(w2_start, w1_start)
+
+    def _pct(cur, prev, k):
+        if not cur or not prev: return None
+        c, p = cur.get(k), prev.get(k)
+        if c is None or p is None or p == 0: return None
+        return round(((c - p) / p) * 100, 1)
+
+    return {
+        "this_week": this_week,
+        "last_week": last_week,
+        "delta": {
+            "download_pct":  _pct(this_week, last_week, "avg_download"),
+            "upload_pct":    _pct(this_week, last_week, "avg_upload"),
+            "ping_pct":      _pct(this_week, last_week, "avg_ping"),
+            "outages_delta": (
+                (this_week["outages"] - last_week["outages"])
+                if (this_week and last_week) else None
+            ),
+        },
+        "generated_at": now.isoformat(),
+    }
+
+
+# ─── Anomaly detection ───────────────────────────────────────────────────────
+
+@router.get("/anomalies", tags=["insights"],
+            summary="Speed anomaly detection",
+            description="Returns measurements that are >2 standard deviations from the mean (statistical outliers).")
+def get_anomalies(
+    hours: int = Query(default=168, ge=1, le=720),
+    client_id: Optional[str] = Depends(get_client_id),
+    db: Session = Depends(get_db),
+):
+    import math as _math
+    since = datetime.utcnow() - timedelta(hours=hours)
+    rows = _scope(db.query(SpeedMeasurement), client_id).filter(
+        SpeedMeasurement.timestamp >= since
+    ).order_by(desc(SpeedMeasurement.timestamp)).all()
+
+    if len(rows) < 5:
+        return {"anomalies": [], "total_checked": len(rows),
+                "message": "Need ≥5 data points for anomaly detection."}
+
+    dls  = [r.download_speed for r in rows if r.download_speed is not None]
+    mean = sum(dls) / len(dls)
+    var  = sum((x - mean) ** 2 for x in dls) / len(dls)
+    std  = _math.sqrt(var) if var > 0 else 0
+
+    anomalies = []
+    for r in rows:
+        if r.download_speed is None or std == 0:
+            continue
+        z = (r.download_speed - mean) / std
+        if abs(z) > 2.0:
+            anomalies.append({
+                "id":             r.id,
+                "timestamp":      r.timestamp.isoformat(),
+                "download_speed": round(r.download_speed, 2),
+                "upload_speed":   round(r.upload_speed, 2) if r.upload_speed else None,
+                "ping":           round(r.ping, 1) if r.ping else None,
+                "z_score":        round(z, 2),
+                "type":           "spike" if z > 0 else "drop",
+                "is_outage":      r.is_outage,
+            })
+
+    return {
+        "anomalies":      anomalies[:50],
+        "total_checked":  len(rows),
+        "mean_mbps":      round(mean, 2),
+        "std_mbps":       round(std, 2),
+        "threshold":      "±2σ",
+        "hours_analyzed": hours,
+    }
+
+
+# ─── Traceroute ──────────────────────────────────────────────────────────────
+
+@router.get("/traceroute", tags=["network"],
+            summary="Traceroute from server",
+            description="Runs traceroute/tracepath from the Fly.io server to a target host (max 20 hops, 2s timeout).")
+def run_traceroute(host: str = Query(default="8.8.8.8")):
+    import subprocess as _sp
+
+    ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:")
+    if not host or not all(c in ALLOWED for c in host) or len(host) > 253:
+        raise HTTPException(status_code=400, detail="Invalid host.")
+
+    for cmd in [["traceroute", "-n", "-m", "20", "-w", "2", host],
+                ["tracepath",  "-n", "-m", "20", host]]:
+        try:
+            res = _sp.run(cmd, capture_output=True, text=True, timeout=35)
+            if res.returncode == 0 or res.stdout.strip():
+                hops = [l for l in res.stdout.splitlines() if l.strip()]
+                return {"host": host, "hops": hops, "tool": cmd[0], "raw": res.stdout}
+        except (FileNotFoundError, _sp.TimeoutExpired):
+            continue
+
+    raise HTTPException(status_code=503, detail="traceroute/tracepath not available on this server.")
+
+
+# ─── Shareable report snapshots ───────────────────────────────────────────────
+
+import json as _json
+import hashlib as _hashlib
+
+_snapshots: dict = {}
+
+
+@router.post("/snapshots", tags=["insights"],
+             summary="Create shareable snapshot",
+             description="Saves a JSON payload and returns a short ID for sharing.")
+async def create_snapshot(request: Request):
+    body = await request.body()
+    if len(body) > 32 * 1024:
+        raise HTTPException(status_code=413, detail="Snapshot too large (max 32 KB).")
+    try:
+        data = _json.loads(body)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON.")
+
+    snap_id = _hashlib.sha256(body).hexdigest()[:12]
+    _snapshots[snap_id] = {"data": data, "created_at": datetime.utcnow().isoformat()}
+    if len(_snapshots) > 500:
+        del _snapshots[next(iter(_snapshots))]
+
+    return {"id": snap_id, "url": f"/snapshots/{snap_id}"}
+
+
+@router.get("/snapshots/{snap_id}", tags=["insights"],
+            summary="Retrieve snapshot",
+            description="Fetches a previously created report snapshot by its ID.")
+def get_snapshot(snap_id: str):
+    snap = _snapshots.get(snap_id)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Snapshot not found or expired.")
+    return snap
+
+
+# ─── Multi-region latency ─────────────────────────────────────────────────────
+
+@router.get("/multi-region", tags=["network"],
+            summary="Multi-region latency check",
+            description="HTTP latency to servers in multiple geographic regions to distinguish local vs global outages.")
+def get_multi_region():
+    import httpx as _httpx
+
+    REGIONS = [
+        {"name": "US East (Cloudflare)",  "url": "https://1.1.1.1",          "region": "us-east"},
+        {"name": "Europe (Cloudflare)",   "url": "https://1.0.0.1",          "region": "europe"},
+        {"name": "US West (Google DNS)",  "url": "https://8.8.8.8",          "region": "us-west"},
+        {"name": "Africa (AFRINIC)",      "url": "https://www.afrinic.net",   "region": "africa"},
+        {"name": "Asia (Alibaba DNS)",    "url": "https://223.5.5.5",        "region": "asia"},
+        {"name": "Global (AWS)",          "url": "https://aws.amazon.com",   "region": "global"},
+    ]
+
+    results = []
+    for r in REGIONS:
+        t0 = time.time()
+        try:
+            resp = _httpx.get(r["url"], timeout=5, follow_redirects=True)
+            lat  = round((time.time() - t0) * 1000)
+            results.append({**r, "latency_ms": lat, "status": resp.status_code, "reachable": True})
+        except Exception:
+            results.append({**r, "latency_ms": None, "status": None, "reachable": False})
+
+    ok  = [x for x in results if x["reachable"]]
+    avg = round(sum(x["latency_ms"] for x in ok) / len(ok)) if ok else None
+    return {
+        "regions":          results,
+        "avg_latency_ms":   avg,
+        "reachable_count":  len(ok),
+        "total":            len(REGIONS),
+        "checked_at":       datetime.utcnow().isoformat(),
+    }
+
+
+# ─── WebSocket live feed ──────────────────────────────────────────────────────
+
+from fastapi import WebSocket, WebSocketDisconnect
+import json as _json_ws
+
+_ws_connections: list = []
+
+
+@router.websocket("/ws/live")
+async def websocket_live(websocket: WebSocket):
+    """Real-time WebSocket — heartbeat every 10s + broadcasts new measurements."""
+    await websocket.accept()
+    _ws_connections.append(websocket)
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+                if msg.strip().lower() == "ping":
+                    await websocket.send_text('{"type":"pong"}')
+            except asyncio.TimeoutError:
+                await websocket.send_text(_json_ws.dumps({
+                    "type": "heartbeat",
+                    "ts":   datetime.utcnow().isoformat(),
+                    "connected_clients": len(_ws_connections),
+                }))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in _ws_connections:
+            _ws_connections.remove(websocket)
+
+
+async def broadcast_measurement(measurement_dict: dict):
+    """Push a new measurement to all connected WebSocket clients."""
+    if not _ws_connections:
+        return
+    payload = _json_ws.dumps({"type": "measurement", "data": measurement_dict})
+    dead = []
+    for ws in _ws_connections:
+        try:
+            await ws.send_text(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in _ws_connections:
+            _ws_connections.remove(ws)

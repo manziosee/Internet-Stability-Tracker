@@ -9,4 +9,6 @@ alembic==1.12.1
 apscheduler==3.10.4
 httpx==0.25.2
 psutil>=5.9.0
+websockets>=12.0              # required for FastAPI WebSocket support with uvicorn
+sentry-sdk[fastapi]>=1.39.2   # optional — only activates when SENTRY_DSN env var is set
 # psycopg2-binary removed — now using Turso (libSQL) via httpx HTTP adapter

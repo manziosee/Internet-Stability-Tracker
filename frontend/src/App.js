@@ -17,6 +17,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import HistoryIcon from '@mui/icons-material/History';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import InsightsIcon from '@mui/icons-material/Insights';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -26,6 +27,7 @@ import StatusPage from './components/StatusPage';
 import TimelinePage from './components/TimelinePage';
 import DiagnosticsPage from './components/DiagnosticsPage';
 import AIInsightsPage from './components/AIInsightsPage';
+import AdvancedInsightsPage from './components/AdvancedInsightsPage';
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '/',           icon: <DashboardIcon fontSize="small" /> },
@@ -36,6 +38,7 @@ const NAV_ITEMS = [
   { label: 'Timeline',     path: '/timeline',   icon: <HistoryIcon fontSize="small" /> },
   { label: 'Diagnostics',  path: '/diagnostics',icon: <NetworkCheckIcon fontSize="small" /> },
   { label: 'AI Insights',  path: '/insights',   icon: <AutoAwesomeIcon fontSize="small" /> },
+  { label: 'Advanced',     path: '/advanced',   icon: <InsightsIcon fontSize="small" /> },
 ];
 
 function NavBar() {
@@ -215,6 +218,7 @@ function App() {
             <Route path="/timeline"   element={<TimelinePage />} />
             <Route path="/diagnostics" element={<DiagnosticsPage />} />
             <Route path="/insights"   element={<AIInsightsPage />} />
+            <Route path="/advanced"   element={<AdvancedInsightsPage />} />
           </Routes>
         </Box>
       </Box>
