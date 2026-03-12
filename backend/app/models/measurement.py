@@ -16,11 +16,15 @@ class SpeedMeasurement(Base):
     latitude       = Column(Float,  nullable=True)
     longitude      = Column(Float,  nullable=True)
     is_outage      = Column(Boolean, default=False, nullable=False)
+    # Per-device identity: UUID generated in the browser and stored in localStorage.
+    # All personal data is scoped to this ID so users never see each other's data.
+    client_id      = Column(String, nullable=True, index=True)
 
     __table_args__ = (
         Index("ix_speed_meas_timestamp", "timestamp"),
         Index("ix_speed_meas_isp",       "isp"),
         Index("ix_speed_meas_outage",    "is_outage"),
+        Index("ix_speed_meas_client",    "client_id"),
     )
 
 

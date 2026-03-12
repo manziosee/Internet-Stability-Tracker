@@ -1,8 +1,10 @@
 # ── Deploy to Fly.io ──────────────────────────────────────────────────────────
 # Triggered on every push to main.
+#
 # Required GitHub Actions secret:  FLY_API_TOKEN
-#   Get it with:  fly tokens create deploy -x 999999h
-#   Add it at:    Settings → Secrets → Actions → New repository secret
+#   1. Generate:  fly tokens create deploy -x 999999h
+#   2. Add at:    GitHub repo → Settings → Secrets and variables → Actions
+#                 → New repository secret → Name: FLY_API_TOKEN
 
 name: Deploy to Fly.io
 
@@ -22,10 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify FLY_API_TOKEN is configured
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_API_TOKEN secret is not set."
+            echo "::error::Run: fly tokens create deploy -x 999999h"
+            echo "::error::Then add it at: Settings → Secrets → Actions → New repository secret"
+            exit 1
+          fi
+
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only --wait-timeout 180
+        run: flyctl deploy --app backend-cold-butterfly-9535 --remote-only --wait-timeout 180
