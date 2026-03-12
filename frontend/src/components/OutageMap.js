@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
-import { getOutages, getReports, getRecentMeasurements, confirmReport, rejectReport } from '../services/api';
-import axios from 'axios';
+import { getOutages, getReports, getRecentMeasurements, confirmReport, rejectReport, getMyConnection } from '../services/api';
 import {
   Box, Typography, Paper, Chip, ToggleButtonGroup, ToggleButton,
   List, ListItem, ListItemText, Divider, Skeleton, Button, IconButton, Tooltip,
@@ -119,13 +118,11 @@ function OutageMap() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Detect user's real location — browser GPS first, ip-api.com fallback
+  // Detect user's real location — browser GPS first, backend /my-connection fallback
   useEffect(() => {
-    const fromGeo = (lat, lon) => {
-      // Enrich with ISP/city from ip-api.com
-      axios.get('http://ip-api.com/json/', {
-        params: { fields: 'status,country,city,isp,lat,lon' },
-      }).then((r) => {
+    const enrichFromBackend = (lat, lon) => {
+      // Enrich with ISP/city from backend (which does geo lookup server-side)
+      getMyConnection().then((r) => {
         const d = r.data || {};
         setUserLocation({ lat, lon, isp: d.isp, city: d.city, country: d.country });
       }).catch(() => setUserLocation({ lat, lon }));
@@ -133,12 +130,10 @@ function OutageMap() {
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => fromGeo(pos.coords.latitude, pos.coords.longitude),
+        (pos) => enrichFromBackend(pos.coords.latitude, pos.coords.longitude),
         () => {
-          // Permission denied — fall back entirely to ip-api.com
-          axios.get('http://ip-api.com/json/', {
-            params: { fields: 'status,country,city,isp,lat,lon' },
-          }).then((r) => {
+          // Permission denied — fall back to backend geo lookup for lat/lon
+          getMyConnection().then((r) => {
             const d = r.data || {};
             if (d.lat && d.lon) setUserLocation({ lat: d.lat, lon: d.lon, isp: d.isp, city: d.city, country: d.country });
           }).catch(() => {});
@@ -146,9 +141,7 @@ function OutageMap() {
         { timeout: 6000 }
       );
     } else {
-      axios.get('http://ip-api.com/json/', {
-        params: { fields: 'status,country,city,isp,lat,lon' },
-      }).then((r) => {
+      getMyConnection().then((r) => {
         const d = r.data || {};
         if (d.lat && d.lon) setUserLocation({ lat: d.lat, lon: d.lon, isp: d.isp, city: d.city, country: d.country });
       }).catch(() => {});
