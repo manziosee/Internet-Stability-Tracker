@@ -133,3 +133,121 @@ export const getSnapshot = (id) =>
 
 export const getMultiRegion = () =>
   api.get('/multi-region');
+
+// ── New Cool Features ──────────────────────────────────────────────────────────────
+
+export const getGamingMetrics = (hours = 1) =>
+  api.get(`/gaming-metrics?hours=${hours}`);
+
+export const getVideoCallQuality = () =>
+  api.get('/video-call-quality');
+
+export const getRouterHealth = () =>
+  api.get('/router-health');
+
+export const getActivityRecommendations = () =>
+  api.get('/activity-recommendations');
+
+export const getIsItJustMe = () =>
+  api.get('/is-it-just-me');
+
+// ── Security Features ──────────────────────────────────────────────────────────────
+
+export const getSecurityAudit = () =>
+  api.get('/security/audit');
+
+export const getPortScan = (target = '127.0.0.1') =>
+  api.get(`/security/port-scan?target=${encodeURIComponent(target)}`);
+
+export const getPrivacyScore = () =>
+  api.get('/security/privacy-score');
+
+export const getVPNRecommendation = () =>
+  api.get('/security/vpn-recommendation');
+
+// ── Advanced Diagnostics ───────────────────────────────────────────────────────────
+
+export const getAdvancedDiagnostics = () =>
+  api.get('/diagnostics/advanced');
+
+export const getPacketLoss = (host = '8.8.8.8', count = 20) =>
+  api.get(`/diagnostics/packet-loss?host=${encodeURIComponent(host)}&count=${count}`);
+
+export const getJitter = (host = '8.8.8.8', samples = 30) =>
+  api.get(`/diagnostics/jitter?host=${encodeURIComponent(host)}&samples=${samples}`);
+
+export const getBufferbloat = () =>
+  api.get('/diagnostics/bufferbloat');
+
+export const getMTU = (host = '8.8.8.8') =>
+  api.get(`/diagnostics/mtu?host=${encodeURIComponent(host)}`);
+
+export const getDNSLeak = () =>
+  api.get('/diagnostics/dns-leak');
+
+export const getVPNSpeedComparison = (vpnInterface = null) =>
+  api.get('/diagnostics/vpn-speed', { params: vpnInterface ? { vpn_interface: vpnInterface } : {} });
+
+// ── ML Predictions ─────────────────────────────────────────────────────────────────
+
+export const getPredictNextHour = () =>
+  api.get('/predictions/next-hour');
+
+export const getOutageProbability = () =>
+  api.get('/predictions/outage-probability');
+
+export const getBestDownloadTime = (hoursAhead = 24) =>
+  api.get(`/predictions/best-download-time?hours_ahead=${hoursAhead}`);
+
+export const getCongestionForecast = () =>
+  api.get('/predictions/congestion-24h');
+
+// ── Smart Alerts ───────────────────────────────────────────────────────────────────
+
+export const getAlertConfig = () =>
+  api.get('/alerts/config');
+
+export const updateAlertConfig = (config) =>
+  api.post('/alerts/config', config);
+
+export const testAlert = () =>
+  api.post('/alerts/test');
+
+// ── AI Insights Enhanced ───────────────────────────────────────────────────────────
+
+export const getRootCause = (hours = 24) =>
+  api.get(`/insights/root-cause?hours=${hours}`);
+
+export const getPredictiveMaintenance = () =>
+  api.get('/insights/predictive-maintenance');
+
+export const getAnomaliesAdvanced = (sensitivity = 2.0) =>
+  api.get(`/insights/anomalies-advanced?sensitivity=${sensitivity}`);
+
+export const askNaturalQuery = (question) =>
+  api.get(`/insights/query?q=${encodeURIComponent(question)}`);
+
+// ── Historical Visualization ───────────────────────────────────────────────────────
+
+export const getHeatmapCalendar = (days = 90) =>
+  api.get(`/history/heatmap-calendar?days=${days}`);
+
+export const getSpeedDistribution = (bins = 20) =>
+  api.get(`/history/distribution?bins=${bins}`);
+
+export const getPercentiles = () =>
+  api.get('/history/percentiles');
+
+export const getCorrelation = () =>
+  api.get('/history/correlation');
+
+export const getInteractiveTimeline = (hours = 168) =>
+  api.get(`/history/interactive-timeline?hours=${hours}`);
+
+// ── User Preferences ───────────────────────────────────────────────────────────────
+
+export const getPreferences = () =>
+  api.get('/preferences');
+
+export const updatePreferences = (prefs) =>
+  api.post('/preferences', prefs);

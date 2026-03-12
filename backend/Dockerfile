@@ -6,9 +6,13 @@ LABEL org.opencontainers.image.title="IST Backend" \
       org.opencontainers.image.description="Internet Stability Tracker API" \
       org.opencontainers.image.version="1.0.0"
 
-# Upgrade system packages (patch CVEs in base image)
+# Upgrade system packages (patch CVEs in base image) + install network diagnostic tools
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
- && apt-get install -y --no-install-recommends curl \
+ && apt-get install -y --no-install-recommends \
+    curl \
+    traceroute \
+    iputils-ping \
+    dnsutils \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

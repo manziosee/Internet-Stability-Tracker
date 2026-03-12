@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # ── Sentry ──────────────────────────────────────────────────────────────
     SENTRY_DSN: Optional[str] = None            # Set via fly secrets set SENTRY_DSN=https://...
 
+    # ── Smart Alerts ────────────────────────────────────────────────────────
+    TELEGRAM_BOT_TOKEN: Optional[str] = None    # Telegram bot token for alerts
+    TWILIO_ACCOUNT_SID: Optional[str] = None    # Twilio account SID for SMS
+    TWILIO_AUTH_TOKEN: Optional[str] = None     # Twilio auth token
+    TWILIO_FROM_NUMBER: Optional[str] = None    # Twilio phone number
+
+    # ── Redis (optional caching) ────────────────────────────────────────────
+    REDIS_URL: Optional[str] = None             # redis://localhost:6379/0
+
     class Config:
         env_file = ".env"
 
