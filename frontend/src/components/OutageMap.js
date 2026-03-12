@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import { getOutages, getReports, getRecentMeasurements, confirmReport, rejectReport } from '../services/api';
+import axios from 'axios';
 import {
   Box, Typography, Paper, Chip, ToggleButtonGroup, ToggleButton,
   List, ListItem, ListItemText, Divider, Skeleton, Button, IconButton, Tooltip,
@@ -30,6 +31,28 @@ function createMarker(color, letter) {
 const outageMarker  = createMarker('#E53935', '!');
 const reportMarker  = createMarker('#F57C00', 'R');
 const monitorMarker = createMarker('#43A047', '✓');
+
+// Pulsing "you are here" marker
+const userLocationIcon = L.divIcon({
+  className: '',
+  html: `<div style="
+    width:18px; height:18px; border-radius:50%;
+    background:rgba(67,160,71,0.9);
+    border:3px solid #fff;
+    box-shadow:0 0 0 0 rgba(67,160,71,0.6);
+    animation:pulse-green 1.8s ease-out infinite;
+  "></div>
+  <style>
+    @keyframes pulse-green {
+      0%   { box-shadow: 0 0 0 0   rgba(67,160,71,0.6); }
+      70%  { box-shadow: 0 0 0 14px rgba(67,160,71,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(67,160,71,0);    }
+    }
+  </style>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+  popupAnchor: [0, -12],
+});
 
 const ISSUE_LABELS = {
   outage: 'Complete Outage',
@@ -64,13 +87,14 @@ function HeatmapLayer({ points }) {
 }
 
 function OutageMap() {
-  const [outages, setOutages]     = useState([]);
-  const [reports, setReports]     = useState([]);
-  const [monitors, setMonitors]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [layer, setLayer]         = useState('both');
+  const [outages, setOutages]         = useState([]);
+  const [reports, setReports]         = useState([]);
+  const [monitors, setMonitors]       = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [layer, setLayer]             = useState('both');
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [verifying, setVerifying] = useState({});
+  const [verifying, setVerifying]     = useState({});
+  const [userLocation, setUserLocation] = useState(null); // { lat, lon, isp, city, country }
 
   const fetchData = useCallback(async () => {
     try {
@@ -94,6 +118,42 @@ function OutageMap() {
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Detect user's real location — browser GPS first, ip-api.com fallback
+  useEffect(() => {
+    const fromGeo = (lat, lon) => {
+      // Enrich with ISP/city from ip-api.com
+      axios.get('http://ip-api.com/json/', {
+        params: { fields: 'status,country,city,isp,lat,lon' },
+      }).then((r) => {
+        const d = r.data || {};
+        setUserLocation({ lat, lon, isp: d.isp, city: d.city, country: d.country });
+      }).catch(() => setUserLocation({ lat, lon }));
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fromGeo(pos.coords.latitude, pos.coords.longitude),
+        () => {
+          // Permission denied — fall back entirely to ip-api.com
+          axios.get('http://ip-api.com/json/', {
+            params: { fields: 'status,country,city,isp,lat,lon' },
+          }).then((r) => {
+            const d = r.data || {};
+            if (d.lat && d.lon) setUserLocation({ lat: d.lat, lon: d.lon, isp: d.isp, city: d.city, country: d.country });
+          }).catch(() => {});
+        },
+        { timeout: 6000 }
+      );
+    } else {
+      axios.get('http://ip-api.com/json/', {
+        params: { fields: 'status,country,city,isp,lat,lon' },
+      }).then((r) => {
+        const d = r.data || {};
+        if (d.lat && d.lon) setUserLocation({ lat: d.lat, lon: d.lon, isp: d.isp, city: d.city, country: d.country });
+      }).catch(() => {});
+    }
+  }, []);
 
   const handleVerify = async (reportId, action) => {
     setVerifying((v) => ({ ...v, [reportId]: action }));
@@ -180,6 +240,30 @@ function OutageMap() {
                 />
                 <MapAutoFit outages={visibleOutages} reports={visibleReports} monitors={visibleMonitors} />
 
+                {/* User's current location — pulsing green dot */}
+                {userLocation && (
+                  <>
+                    <Circle
+                      center={[userLocation.lat, userLocation.lon]}
+                      radius={40000}
+                      pathOptions={{ color: '#43A047', fillColor: '#43A047', fillOpacity: 0.08, weight: 1.5, dashArray: '6,4' }}
+                    />
+                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIcon}>
+                      <Popup>
+                        <Box sx={{ minWidth: 160 }}>
+                          <Typography fontWeight={700} fontSize={14} color="#43A047" mb={0.5}>Your Location</Typography>
+                          {userLocation.city && <Typography fontSize={13}><strong>City:</strong> {userLocation.city}</Typography>}
+                          {userLocation.country && <Typography fontSize={13}><strong>Country:</strong> {userLocation.country}</Typography>}
+                          {userLocation.isp && <Typography fontSize={13}><strong>ISP:</strong> {userLocation.isp}</Typography>}
+                          <Typography fontSize={12} color="text.secondary" mt={0.5}>
+                            {userLocation.lat.toFixed(4)}, {userLocation.lon.toFixed(4)}
+                          </Typography>
+                        </Box>
+                      </Popup>
+                    </Marker>
+                  </>
+                )}
+
                 {showHeatmap && heatPoints.length > 0 && <HeatmapLayer points={heatPoints} />}
 
                 {!showHeatmap && visibleOutages.map((outage) => (
@@ -257,13 +341,19 @@ function OutageMap() {
           )}
 
           {/* Legend */}
-          <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 2, mt: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
             {[['#E53935', `Outage (${outages.length})`], ['#F57C00', `Report (${reports.length})`], ['#43A047', `Monitor (${monitors.length})`]].map(([color, label]) => (
               <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: color }} />
                 <Typography variant="caption" color="text.secondary">{label}</Typography>
               </Box>
             ))}
+            {userLocation && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#43A047', border: '2px solid #fff', boxShadow: '0 0 0 2px #43A047' }} />
+                <Typography variant="caption" color="text.secondary">You ({userLocation.city || 'Your Location'})</Typography>
+              </Box>
+            )}
           </Box>
         </Box>
 

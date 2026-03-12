@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -16,6 +16,18 @@ class Settings(BaseSettings):
     OUTAGE_THRESHOLD_MBPS: float = 1.0          # below this = outage
     CORS_ORIGINS: List[str] = ["*"]
     MAX_HISTORY_HOURS: int = 168                # 7 days max for history queries
+
+    # ── Alerts / webhooks ───────────────────────────────────────────────────
+    ALERT_WEBHOOK_URL: Optional[str] = None     # Discord/Slack/generic webhook URL for outage alerts
+    ALERT_EMAIL: Optional[str] = None           # destination email (requires SMTP settings below)
+    SMTP_HOST: Optional[str] = None             # e.g. smtp.gmail.com
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None             # From address; defaults to SMTP_USER
+
+    # ── Sentry ──────────────────────────────────────────────────────────────
+    SENTRY_DSN: Optional[str] = None            # Set via fly secrets set SENTRY_DSN=https://...
 
     class Config:
         env_file = ".env"
