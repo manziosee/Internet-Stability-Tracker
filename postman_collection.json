@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Internet Stability Tracker API v2",
-    "description": "Complete API collection for the Internet Stability Tracker — community network monitoring platform.\n\n## Live Production URL\nAll requests default to the **live Fly.io deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP |\n| `POST /reports` | 20 req / 60 s per IP |\n| All others | 120 req / 60 s per IP |",
+    "description": "Complete API collection for the Internet Stability Tracker v2 — community network monitoring platform.\n\n## Live Production URL\nAll requests default to the **live Fly.io deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + per X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + per X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v2\n- WebSocket live feed (`/ws/live`)\n- Browser bandwidth probe (`/bandwidth-probe`)\n- Congestion heatmap (`/congestion-heatmap`)\n- Week-over-week comparison (`/comparison`)\n- Anomaly detection (`/anomalies`)\n- Traceroute (`/traceroute`)\n- Multi-region latency (`/multi-region`)\n- Shareable snapshots (`/snapshots`)",
     "version": "2.0.0",
     "_postman_id": "ist-api-v2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -618,6 +618,241 @@
             },
             "description": "Same as the 7d insight endpoint but scoped to the last 24 hours."
           }
+        },
+        {
+          "name": "Congestion Heatmap (7×24)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/congestion-heatmap?days=28",
+              "host": ["{{base_url}}"],
+              "path": ["congestion-heatmap"],
+              "query": [
+                {"key": "days", "value": "28", "description": "Look-back window in days (7–90)"}
+              ]
+            },
+            "description": "7×24 grid of average download speed grouped by weekday × hour-of-day.\n\nEach cell: `day_name`, `hour`, `avg_mbps` (null if no data), `count`.\n\nUsed to render the congestion heatmap on the Advanced Insights page."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"days\":28,\"cells\":[{\"day\":0,\"day_name\":\"Mon\",\"hour\":8,\"avg_mbps\":92.1,\"count\":4},{\"day\":4,\"day_name\":\"Fri\",\"hour\":19,\"avg_mbps\":58.3,\"count\":3}]}"
+            }
+          ]
+        },
+        {
+          "name": "Week-over-week Comparison",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/comparison",
+              "host": ["{{base_url}}"],
+              "path": ["comparison"]
+            },
+            "description": "Compares this week (last 7 days) to the previous week (7–14 days ago).\n\nReturns delta percentages for download, upload, ping and outage count."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"this_week\":{\"avg_download\":91.2,\"avg_upload\":18.4,\"avg_ping\":24.1,\"outage_count\":0,\"tests\":10},\"last_week\":{\"avg_download\":85.0,\"avg_upload\":17.1,\"avg_ping\":27.3,\"outage_count\":1,\"tests\":8},\"delta\":{\"download_pct\":7.3,\"upload_pct\":7.6,\"ping_pct\":-11.7,\"outages_delta\":-1},\"generated_at\":\"2026-03-12T10:00:00\"}"
+            }
+          ]
+        },
+        {
+          "name": "Anomaly Detection",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/anomalies?hours=168",
+              "host": ["{{base_url}}"],
+              "path": ["anomalies"],
+              "query": [
+                {"key": "hours", "value": "168", "description": "Look-back window in hours (1–720)"}
+              ]
+            },
+            "description": "Detects statistical outliers using z-score (±2σ threshold). Requires ≥5 data points.\n\nReturns measurements that deviate more than 2 standard deviations from the mean download speed."
+          },
+          "response": [
+            {
+              "name": "Anomalies found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"anomalies\":[{\"id\":42,\"timestamp\":\"2026-03-10T02:30:00\",\"download_speed\":2.1,\"z_score\":-2.8,\"direction\":\"low\",\"isp\":\"MTN\"}],\"total_checked\":48,\"message\":\"Found 1 anomaly out of 48 measurements.\"}"
+            },
+            {
+              "name": "No anomalies",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"anomalies\":[],\"total_checked\":48,\"message\":\"No anomalies detected.\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Network v2",
+      "item": [
+        {
+          "name": "Bandwidth probe — download",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/bandwidth-probe?size_kb=256",
+              "host": ["{{base_url}}"],
+              "path": ["bandwidth-probe"],
+              "query": [
+                {"key": "size_kb", "value": "256", "description": "Payload size in KB (4–512, default 256)"}
+              ]
+            },
+            "description": "Returns a binary payload for browser-side download speed measurement.\n\nThe browser times the fetch: `Mbps = (size_bytes × 8) / seconds / 1_000_000`.\n\n`Cache-Control: no-store` prevents caching."
+          },
+          "response": [
+            {
+              "name": "256KB payload",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/octet-stream"},
+                {"key": "Content-Length", "value": "262144"},
+                {"key": "Cache-Control", "value": "no-store, no-cache"}
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Bandwidth probe — upload",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/bandwidth-probe",
+              "host": ["{{base_url}}"],
+              "path": ["bandwidth-probe"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "A".repeat(32768),
+              "options": {"raw": {"language": "text"}}
+            },
+            "description": "Accepts a request body for upload timing. Browser POSTs N KB and measures how long it takes.\n\nAlways returns `{\"ok\": true}` — the body is discarded."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"ok\":true}"
+            }
+          ]
+        },
+        {
+          "name": "Multi-region latency",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/multi-region",
+              "host": ["{{base_url}}"],
+              "path": ["multi-region"]
+            },
+            "description": "Measures HTTP latency from the Fly.io server to 6 geographic regions in parallel.\n\nRegions: North America, Europe, Asia-Pacific, South America, Africa, Oceania.\n\n⏱ Takes 2–5 seconds (5s timeout per region)."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"results\":[{\"region\":\"North America\",\"latency_ms\":82.4,\"reachable\":true},{\"region\":\"Europe\",\"latency_ms\":45.1,\"reachable\":true},{\"region\":\"Africa\",\"latency_ms\":18.2,\"reachable\":true}],\"measured_at\":\"2026-03-12T10:00:00\"}"
+            }
+          ]
+        },
+        {
+          "name": "Traceroute",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/traceroute?host=8.8.8.8",
+              "host": ["{{base_url}}"],
+              "path": ["traceroute"],
+              "query": [
+                {"key": "host", "value": "8.8.8.8", "description": "Target hostname or IP"}
+              ]
+            },
+            "description": "Runs traceroute/tracepath from the Fly.io server to a target host.\n\n⚠️ Returns 503 if neither `traceroute` nor `tracepath` is installed in the server sandbox.\n\nMax 20 hops, 2s timeout, 35s total timeout."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"host\":\"8.8.8.8\",\"tool\":\"traceroute\",\"hops\":[\" 1  10.0.0.1  1.2 ms\",\" 2  8.8.8.8  12.1 ms\"],\"raw\":\"traceroute to 8.8.8.8 ...\"}"
+            },
+            {
+              "name": "Not available",
+              "status": "Service Unavailable",
+              "code": 503,
+              "body": "{\"detail\":\"traceroute/tracepath not available on this server.\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Snapshots v2",
+      "item": [
+        {
+          "name": "Create shareable snapshot",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{base_url}}/snapshots",
+              "host": ["{{base_url}}"],
+              "path": ["snapshots"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My network report — March 2026\",\n  \"data\": {\n    \"avg_download\": 91.2,\n    \"avg_upload\": 18.4,\n    \"avg_ping\": 24.1,\n    \"uptime_pct\": 100.0,\n    \"grade\": \"A\"\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Creates a shareable in-memory snapshot of network report data.\n\nReturns a snapshot `id` — share it via `GET /api/snapshots/{id}`.\n\nNote: Snapshots are in-memory and lost on server restart."
+          },
+          "response": [
+            {
+              "name": "Created",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":\"a1b2c3d4\",\"url\":\"/api/snapshots/a1b2c3d4\",\"created_at\":\"2026-03-12T10:00:00\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get snapshot by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/snapshots/a1b2c3d4",
+              "host": ["{{base_url}}"],
+              "path": ["snapshots", "a1b2c3d4"]
+            },
+            "description": "Retrieves a previously created snapshot. Replace `a1b2c3d4` with the actual ID from `POST /api/snapshots`."
+          },
+          "response": [
+            {
+              "name": "Found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"id\":\"a1b2c3d4\",\"title\":\"My network report\",\"data\":{\"avg_download\":91.2,\"grade\":\"A\"},\"created_at\":\"2026-03-12T10:00:00\"}"
+            },
+            {
+              "name": "Not found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\"detail\":\"Snapshot not found.\"}"
+            }
+          ]
         }
       ]
     }

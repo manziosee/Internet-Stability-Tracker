@@ -28,7 +28,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine
+  Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine, Brush
 } from 'recharts';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import { getRecentMeasurements, getISPComparison, runTestNow, getStats, getAlerts, getNetworkUsage, clearMeasurements, getQualityScore, getAIInsights, getOutageConfidence } from '../services/api';
@@ -416,7 +416,58 @@ function Dashboard() {
   const [lastTestResult, setLastTestResult] = useState(null);
   const [networkUsage, setNetworkUsage] = useState(null);
   const [networkLoading, setNetworkLoading] = useState(false);
+  const [bandwidth, setBandwidth] = useState({ download: null, upload: null, measuring: false });
+  const [wsStatus, setWsStatus] = useState('disconnected'); // 'connected' | 'disconnected'
   const [now, setNow] = useState(new Date());
+
+  // ── WebSocket real-time feed ───────────────────────────────────────────────
+  const wsRef = useRef(null);
+  useEffect(() => {
+    const API_BASE = process.env.REACT_APP_API_URL || '/api';
+    const wsUrl = API_BASE.replace(/^http/, 'ws') + '/ws/live';
+    let reconnectTimer;
+    let destroyed = false;
+
+    function connect() {
+      if (destroyed) return;
+      try {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        ws.onopen  = () => { if (!destroyed) setWsStatus('connected'); };
+        ws.onclose = () => {
+          if (destroyed) return;
+          setWsStatus('disconnected');
+          reconnectTimer = setTimeout(connect, 10000);  // reconnect after 10s
+        };
+        ws.onerror = () => ws.close();
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'measurement') {
+              // New measurement pushed from server — refresh data
+              fetchData();
+            }
+          } catch {}
+        };
+        // Keepalive ping every 25s
+        const ping = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+        }, 25000);
+        ws.addEventListener('close', () => clearInterval(ping));
+      } catch {}
+    }
+
+    connect();
+    return () => {
+      destroyed = true;
+      clearTimeout(reconnectTimer);
+      if (wsRef.current) {
+        wsRef.current.onclose = null;  // prevent reconnect loop on cleanup
+        wsRef.current.close();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [timeRange, setTimeRange] = useState(24);
@@ -472,7 +523,7 @@ function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  // Fetch network usage (1 second sample per call — poll every 5s)
+  // Fetch network usage (apps list + server totals)
   const fetchNetworkUsage = useCallback(async () => {
     if (networkLoading) return;
     setNetworkLoading(true);
@@ -486,7 +537,49 @@ function Dashboard() {
 
   useEffect(() => {
     fetchNetworkUsage();
-    const t = setInterval(fetchNetworkUsage, 5000);
+    const t = setInterval(fetchNetworkUsage, 10000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Browser-side bandwidth measurement — times a real fetch against the backend
+  // so we measure the user's connection speed, not the server's network I/O.
+  const measureBandwidth = useCallback(async () => {
+    setBandwidth((prev) => ({ ...prev, measuring: true }));
+    try {
+      const API_BASE = process.env.REACT_APP_API_URL || '/api';
+      const PROBE_KB = 256;
+
+      // ── Download: fetch 256 KB, time how long it takes ──
+      const t0 = performance.now();
+      const dlRes = await fetch(`${API_BASE}/bandwidth-probe?size_kb=${PROBE_KB}`, {
+        cache: 'no-store',
+      });
+      await dlRes.arrayBuffer();
+      const dlSec = (performance.now() - t0) / 1000;
+      const dlMbps = parseFloat(((PROBE_KB * 1024 * 8) / dlSec / 1_000_000).toFixed(2));
+
+      // ── Upload: POST 32 KB (stays under 64 KB request-body limit), time it ──
+      const UPLOAD_BYTES = 32 * 1024;
+      const tu0 = performance.now();
+      await fetch(`${API_BASE}/bandwidth-probe`, {
+        method: 'POST',
+        body: new Uint8Array(UPLOAD_BYTES),
+        headers: { 'Content-Type': 'application/octet-stream' },
+        cache: 'no-store',
+      });
+      const ulSec = (performance.now() - tu0) / 1000;
+      const ulMbps = parseFloat(((UPLOAD_BYTES * 8) / ulSec / 1_000_000).toFixed(2));
+
+      setBandwidth({ download: dlMbps, upload: ulMbps, measuring: false });
+    } catch {
+      setBandwidth((prev) => ({ ...prev, measuring: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    measureBandwidth();
+    const t = setInterval(measureBandwidth, 8000);
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -643,18 +736,39 @@ function Dashboard() {
   const rating = speedRating(avgDownloadNum);
   const notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
 
-  // Notify when outage is first detected — placed AFTER hasActiveOutage is computed
+  // Push notifications: outage start, recovery, and degraded state
   const prevOutageRef = useRef(false);
+  const prevDegradedRef = useRef(false);
   useEffect(() => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const isDegraded = !hasActiveOutage && avgDownloadNum > 0 && avgDownloadNum < 5;
+    // Outage started
     if (hasActiveOutage && !prevOutageRef.current) {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('⚠️ Internet Outage Detected', {
-          body: 'Your connection appears to be down. Internet Stability Tracker is monitoring.',
-        });
-      }
+      new Notification('⚠️ Internet Outage Detected', {
+        body: 'Your connection appears to be down. Internet Stability Tracker is monitoring.',
+        icon: '/favicon.svg',
+        tag: 'outage-start',
+      });
+    }
+    // Outage recovered
+    if (!hasActiveOutage && prevOutageRef.current) {
+      new Notification('✅ Connection Restored', {
+        body: 'Your internet connection has recovered. Monitoring continues.',
+        icon: '/favicon.svg',
+        tag: 'outage-end',
+      });
+    }
+    // Degraded speed alert (only notify once per degraded period)
+    if (isDegraded && !prevDegradedRef.current && !hasActiveOutage) {
+      new Notification('🐢 Slow Connection Detected', {
+        body: `Your download speed is ${avgDownloadNum.toFixed(1)} Mbps — below normal.`,
+        icon: '/favicon.svg',
+        tag: 'degraded',
+      });
     }
     prevOutageRef.current = hasActiveOutage;
-  }, [hasActiveOutage]);
+    prevDegradedRef.current = isDegraded;
+  }, [hasActiveOutage, avgDownloadNum]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -706,6 +820,22 @@ function Dashboard() {
             </Box>
 
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* WebSocket status dot */}
+              <Tooltip title={wsStatus === 'connected' ? 'Live feed connected' : 'Live feed disconnected — polling every 60s'}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 10,
+                  bgcolor: wsStatus === 'connected' ? 'rgba(67,160,71,0.18)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${wsStatus === 'connected' ? 'rgba(67,160,71,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                  cursor: 'default' }}>
+                  <Box sx={{ width: 7, height: 7, borderRadius: '50%',
+                    bgcolor: wsStatus === 'connected' ? '#43A047' : '#888',
+                    boxShadow: wsStatus === 'connected' ? '0 0 6px #43A047' : 'none' }} />
+                  <Typography variant="caption" sx={{ fontSize: 10, fontWeight: 700,
+                    color: wsStatus === 'connected' ? '#43A047' : 'rgba(255,255,255,0.4)' }}>
+                    {wsStatus === 'connected' ? 'LIVE' : 'POLL'}
+                  </Typography>
+                </Box>
+              </Tooltip>
+
               {/* Countdown ring */}
               <CountdownRing seconds={countdown} />
 
@@ -1209,6 +1339,16 @@ function Dashboard() {
                   name="Download" dot={false} activeDot={{ r: 6, fill: '#f0c24b', stroke: isDark ? '#0a0a0a' : '#fff', strokeWidth: 2 }} />
                 <Area type="monotone" dataKey="upload" stroke="#d0d0d0" strokeWidth={2.5} fill="url(#uploadGrad)"
                   name="Upload" dot={false} activeDot={{ r: 6, fill: '#d0d0d0', stroke: isDark ? '#0a0a0a' : '#fff', strokeWidth: 2 }} />
+                {chartData.length > 20 && (
+                  <Brush
+                    dataKey="time"
+                    height={22}
+                    stroke="rgba(240,194,75,0.3)"
+                    fill={isDark ? '#0a0a0a' : '#f8f8f8'}
+                    travellerWidth={8}
+                    startIndex={Math.max(0, chartData.length - 30)}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -1505,45 +1645,71 @@ function Dashboard() {
             <Box>
               <Typography variant="h6" fontWeight={700}>Live Network Activity</Typography>
               <Typography variant="caption" color="text.secondary">
-                Real-time bandwidth usage · apps with active connections · refreshes every 5s
+                Your real-time bandwidth · apps with active connections · refreshes every 8s
               </Typography>
             </Box>
-            {networkUsage && (
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Box sx={{ textAlign: 'center' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <DownloadIcon sx={{ fontSize: 14, color: '#f0c24b' }} />
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              {/* Download speed */}
+              <Box sx={{ textAlign: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <DownloadIcon sx={{ fontSize: 14, color: '#f0c24b' }} />
+                  {bandwidth.measuring && bandwidth.download === null ? (
+                    <CircularProgress size={16} sx={{ color: '#f0c24b' }} />
+                  ) : (
                     <Typography fontWeight={900} sx={{ color: '#f0c24b', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
-                      {networkUsage.download_mbps.toFixed(1)}
+                      {bandwidth.download != null ? bandwidth.download.toFixed(1) : '…'}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: '#f0c24b', fontWeight: 700 }}>Mbps</Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.disabled">Download now</Typography>
+                  )}
+                  <Typography variant="caption" sx={{ color: '#f0c24b', fontWeight: 700 }}>Mbps</Typography>
                 </Box>
-                <Box sx={{ textAlign: 'center' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <UploadIcon sx={{ fontSize: 14, color: isDark ? '#d0d0d0' : '#555' }} />
-                    <Typography fontWeight={900} sx={{ color: isDark ? '#d0d0d0' : '#333', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
-                      {networkUsage.upload_mbps.toFixed(1)}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: isDark ? '#d0d0d0' : '#555', fontWeight: 700 }}>Mbps</Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.disabled">Upload now</Typography>
-                </Box>
-                <Tooltip title="Session totals since boot">
-                  <Box sx={{ textAlign: 'center', px: 1.5, py: 0.5, borderRadius: 2, bgcolor: 'rgba(240,194,75,0.07)', border: '1px solid rgba(240,194,75,0.15)', cursor: 'help' }}>
-                    <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#f0c24b' }}>
-                      ↓ {networkUsage.total_recv_gb} GB
-                    </Typography>
-                    <Typography variant="caption" display="block" fontWeight={700} color="text.secondary">
-                      ↑ {networkUsage.total_sent_gb} GB
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontSize: 9 }} color="text.disabled">since boot</Typography>
-                  </Box>
-                </Tooltip>
+                <Typography variant="caption" color="text.disabled">Download now</Typography>
               </Box>
-            )}
+              {/* Upload speed */}
+              <Box sx={{ textAlign: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <UploadIcon sx={{ fontSize: 14, color: isDark ? '#d0d0d0' : '#555' }} />
+                  {bandwidth.measuring && bandwidth.upload === null ? (
+                    <CircularProgress size={16} sx={{ color: isDark ? '#d0d0d0' : '#555' }} />
+                  ) : (
+                    <Typography fontWeight={900} sx={{ color: isDark ? '#d0d0d0' : '#333', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
+                      {bandwidth.upload != null ? bandwidth.upload.toFixed(1) : '…'}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" sx={{ color: isDark ? '#d0d0d0' : '#555', fontWeight: 700 }}>Mbps</Typography>
+                </Box>
+                <Typography variant="caption" color="text.disabled">Upload now</Typography>
+              </Box>
+            </Box>
           </Box>
+
+          {/* Bandwidth bars — show once we have a measurement */}
+          {(bandwidth.download != null || bandwidth.upload != null) && (
+            <Box sx={{ mb: 2.5 }}>
+              {[
+                { label: 'Download', value: bandwidth.download ?? 0, color: '#f0c24b' },
+                { label: 'Upload',   value: bandwidth.upload   ?? 0, color: isDark ? '#d0d0d0' : '#888' },
+              ].map(({ label, value, color }) => {
+                const maxVal = Math.max(bandwidth.download ?? 0, bandwidth.upload ?? 0, 1);
+                return (
+                  <Box key={label} sx={{ mb: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+                      <Typography variant="caption" fontWeight={700} sx={{ color }}>{label}</Typography>
+                      <Typography variant="caption" fontWeight={700} sx={{ color, fontVariantNumeric: 'tabular-nums' }}>{value.toFixed(2)} Mbps</Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min((value / maxVal) * 100, 100)}
+                      sx={{
+                        height: 8, borderRadius: 4,
+                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                        '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 },
+                      }}
+                    />
+                  </Box>
+                );
+              })}
+            </Box>
+          )}
 
           {networkLoading && !networkUsage ? (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -1553,31 +1719,6 @@ function Dashboard() {
             </Box>
           ) : networkUsage?.apps?.length > 0 ? (
             <Box>
-              {/* Bandwidth bars */}
-              {networkUsage.download_mbps > 0 || networkUsage.upload_mbps > 0 ? (
-                <Box sx={{ mb: 2.5 }}>
-                  {[
-                    { label: 'Download', value: networkUsage.download_mbps, max: Math.max(networkUsage.download_mbps, 1), color: '#f0c24b' },
-                    { label: 'Upload',   value: networkUsage.upload_mbps,   max: Math.max(networkUsage.download_mbps, 1), color: isDark ? '#d0d0d0' : '#888' },
-                  ].map(({ label, value, max, color }) => (
-                    <Box key={label} sx={{ mb: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
-                        <Typography variant="caption" fontWeight={700} sx={{ color }}>{label}</Typography>
-                        <Typography variant="caption" fontWeight={700} sx={{ color, fontVariantNumeric: 'tabular-nums' }}>{value.toFixed(2)} Mbps</Typography>
-                      </Box>
-                      <LinearProgress
-                        variant="determinate"
-                        value={Math.min((value / max) * 100, 100)}
-                        sx={{
-                          height: 8, borderRadius: 4,
-                          bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                          '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 },
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Box>
-              ) : null}
 
               {/* Per-app list */}
               <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1, mb: 1.5, display: 'block' }}>

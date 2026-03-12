@@ -14,8 +14,21 @@ import RouterIcon from '@mui/icons-material/Router';
 import PublicIcon from '@mui/icons-material/Public';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import BusinessIcon from '@mui/icons-material/Business';
+import DevicesIcon from '@mui/icons-material/Devices';
 import { getDiagnostics, getMyConnection } from '../services/api';
 import axios from 'axios';
+
+function detectOS() {
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) return 'Android (Mobile)';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS (Mobile)';
+  if (/CrOS/i.test(ua)) return 'ChromeOS';
+  if (/Windows NT 10/i.test(ua)) return 'Windows 10/11';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac OS X/i.test(ua)) return 'macOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return 'Unknown OS';
+}
 
 const CONNECTIVITY_CONFIG = {
   full:    { label: 'Full Connectivity',    color: '#43A047', bg: 'rgba(67,160,71,0.12)',  border: 'rgba(67,160,71,0.3)',  Icon: CheckCircleOutlineIcon },
@@ -66,7 +79,7 @@ export default function DiagnosticsPage() {
     setConnLoading(true);
     Promise.all([
       axios.get('http://ip-api.com/json/', {
-        params: { fields: 'status,country,countryCode,regionName,city,isp,org,as,query' },
+        params: { fields: 'status,country,countryCode,regionName,city,isp,org,as,query,lat,lon' },
       }).catch(() => ({ data: {} })),
       getMyConnection().catch(() => ({ data: {} })),
     ]).then(([geoRes, dbRes]) => {
@@ -81,6 +94,9 @@ export default function DiagnosticsPage() {
         country_code:        geo.countryCode|| db.country_code|| null,
         region:              geo.regionName || db.region     || null,
         city:                geo.city       || db.city       || null,
+        lat:                 geo.lat        || null,
+        lon:                 geo.lon        || null,
+        device_os:           detectOS(),
         last_measured_isp:   db.last_measured_isp  || null,
         last_download_mbps:  db.last_download_mbps || null,
         last_upload_mbps:    db.last_upload_mbps   || null,
@@ -167,11 +183,15 @@ export default function DiagnosticsPage() {
                 <InfoRow icon={PublicIcon}     label="Public IP"  value={connInfo.public_ip} mono />
                 <InfoRow icon={BusinessIcon}   label="ISP"        value={connInfo.isp} />
                 <InfoRow icon={BusinessIcon}   label="Org / ASN"  value={connInfo.asn} />
+                <InfoRow icon={DevicesIcon}    label="Device OS"  value={connInfo.device_os} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <InfoRow icon={LocationOnIcon} label="Country"    value={connInfo.country ? `${connInfo.country} (${connInfo.country_code})` : null} />
                 <InfoRow icon={LocationOnIcon} label="Region"     value={connInfo.region} />
                 <InfoRow icon={LocationOnIcon} label="City"       value={connInfo.city} />
+                {connInfo.lat && connInfo.lon && (
+                  <InfoRow icon={LocationOnIcon} label="Coordinates" value={`${connInfo.lat.toFixed(4)}, ${connInfo.lon.toFixed(4)}`} mono />
+                )}
               </Grid>
 
               {/* Last speed test row */}

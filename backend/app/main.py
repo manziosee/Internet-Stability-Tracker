@@ -5,6 +5,22 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+# ─── Sentry (optional — only initialises when SENTRY_DSN is set) ────────────
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    _SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+    if _SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            integrations=[StarletteIntegration(), FastApiIntegration()],
+            traces_sample_rate=0.1,
+            environment=os.getenv("ENVIRONMENT", "development"),
+        )
+except ImportError:
+    pass  # sentry-sdk not installed — skip gracefully
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -63,27 +79,36 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     }
 
     async def dispatch(self, request: Request, call_next):
-        ip   = request.client.host if request.client else "unknown"
-        path = request.url.path.rstrip("/")
+        ip        = request.client.host if request.client else "unknown"
+        client_id = request.headers.get("x-client-id", "")[:40]  # cap length
+        path      = request.url.path.rstrip("/")
         limit, window = self._RULES.get(path, self._RULES["default"])
-        key  = f"{ip}:{path}"
-        now  = time.time()
-        hits = _rate_store[key]
-        hits[:] = [t for t in hits if now - t < window]
+        now = time.time()
 
-        if len(hits) >= limit:
-            logger.warning("Rate limit hit: %s  %s %s", ip, request.method, path)
-            return Response(
-                content='{"detail":"Too many requests — please slow down."}',
-                status_code=429,
-                media_type="application/json",
-                headers={"Retry-After": str(window), "X-RateLimit-Limit": str(limit)},
-            )
+        # Check both IP-keyed and client-ID-keyed buckets
+        keys = [f"ip:{ip}:{path}"]
+        if client_id:
+            keys.append(f"cid:{client_id}:{path}")
 
-        hits.append(now)
+        for key in keys:
+            bucket = _rate_store[key]
+            bucket[:] = [t for t in bucket if now - t < window]
+            if len(bucket) >= limit:
+                logger.warning("Rate limit: %s (cid=%s) %s %s", ip, client_id or "-", request.method, path)
+                return Response(
+                    content='{"detail":"Too many requests — please slow down."}',
+                    status_code=429,
+                    media_type="application/json",
+                    headers={"Retry-After": str(window), "X-RateLimit-Limit": str(limit)},
+                )
+
+        for key in keys:
+            _rate_store[key].append(now)
+
         response = await call_next(request)
+        remaining = max(0, limit - len(_rate_store[keys[0]]))
         response.headers["X-RateLimit-Limit"]     = str(limit)
-        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - len(hits)))
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
         return response
 
 
@@ -110,6 +135,8 @@ def _run_migrations():
     migrations = [
         "ALTER TABLE community_reports ADD COLUMN confirmations INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE community_reports ADD COLUMN rejections INTEGER NOT NULL DEFAULT 0",
+        # Per-device data isolation — UUID sent as X-Client-ID from the browser
+        "ALTER TABLE speed_measurements ADD COLUMN client_id TEXT",
     ]
     from sqlalchemy import text
     with engine.connect() as conn:
@@ -118,7 +145,7 @@ def _run_migrations():
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                pass  # column already exists
+                pass  # column already exists — safe to skip
 
 
 @asynccontextmanager
@@ -139,15 +166,16 @@ _is_prod = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title="Internet Stability Tracker API",
     description="""
-## Internet Stability Tracker — REST API
+## Internet Stability Tracker v2.0 — REST API
 
 Community-driven network monitoring platform that measures internet speed,
 detects outages, and visualises performance across ISPs.
 
 **Live API**: https://backend-cold-butterfly-9535.fly.dev/api
 **Frontend**: https://internet-stability-tracker.vercel.app
+**WebSocket**: wss://backend-cold-butterfly-9535.fly.dev/api/ws/live
 
-### Key capabilities
+### Core capabilities
 - **Speed tests** — on-demand via `POST /api/test-now`; results stored in Turso (libSQL cloud)
 - **Network Quality Score** — composite 0–100 score with letter grade (A+→F) and breakdown
 - **Global Status** — platform-wide health (`healthy` / `degraded` / `outage`) + 7-day daily summary
@@ -159,21 +187,34 @@ detects outages, and visualises performance across ISPs.
 - **Community reports** — crowd-sourced issue submissions with GPS coordinates, confirm/reject voting
 - **Network Diagnostics** — live DNS + HTTP latency checks against 4 well-known targets
 - **AI Insights** — statistical pattern analysis: congestion windows, speed trends, optimal hours
-- **Live network activity** — real-time system bandwidth + per-process connection list
+
+### New in v2.0
+- **WebSocket feed** (`/api/ws/live`) — real-time measurement push, 10s heartbeat
+- **Browser bandwidth probe** (`/api/bandwidth-probe`) — measures your actual connection speed
+- **Congestion heatmap** (`/api/congestion-heatmap`) — 7×24 weekday/hour performance grid
+- **Week-over-week comparison** (`/api/comparison`) — delta % vs previous 7 days
+- **Anomaly detection** (`/api/anomalies`) — z-score outliers (±2σ threshold)
+- **Traceroute** (`/api/traceroute`) — server-side path tracing (when available)
+- **Multi-region latency** (`/api/multi-region`) — HTTP latency to 6 geographic regions
+- **Shareable snapshots** (`POST /api/snapshots`) — generate a shareable report URL
+- **Hourly aggregation + weekly report** — APScheduler background jobs
+- **Per-device isolation** — X-Client-ID header scopes data per browser UUID
+- **Outage webhook/email alerts** — configurable via `ALERT_WEBHOOK_URL` / SMTP secrets
+- **Sentry error tracking** — activates when `SENTRY_DSN` env var is set
 
 ### Rate limits
 | Endpoint | Limit |
 |----------|-------|
-| `POST /api/test-now` | 5 req / 60 s per IP |
-| `POST /api/reports` | 5 req / 60 s per IP |
-| `DELETE /api/measurements` | 3 req / 60 s per IP + requires `X-Admin-Key` header |
+| `POST /api/test-now` | 5 req / 60 s per IP + per client-ID |
+| `POST /api/reports` | 5 req / 60 s per IP + per client-ID |
+| `DELETE /api/measurements` | 3 req / 60 s + requires `X-Admin-Key` header |
 | `GET /api/my-connection` | 10 req / 60 s per IP |
 | All other endpoints | 60 req / 60 s per IP |
 
 ### Postman collection
 Import `postman_collection.json` from the repo root — pre-configured to hit the live production URL.
 """,
-    version="1.0.0",
+    version="2.0.0",
     contact={
         "name": "Internet Stability Tracker",
         "url": "https://github.com/manziosee/Internet-Stability-Tracker",
@@ -187,9 +228,10 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
         {"name": "isp",           "description": "ISP comparison, reliability scores and letter grades"},
         {"name": "reports",       "description": "Community-submitted network issue reports"},
         {"name": "outage-events", "description": "Structured outage event log with duration and severity"},
-        {"name": "network",       "description": "Real-time system bandwidth and per-app connection list"},
+        {"name": "network",       "description": "Real-time system bandwidth, bandwidth probe, traceroute, multi-region latency"},
         {"name": "speed-test",    "description": "On-demand speed test trigger"},
-        {"name": "insights",      "description": "AI-powered statistical pattern analysis and quality scoring"},
+        {"name": "insights",      "description": "AI-powered statistical pattern analysis, anomaly detection, comparison, heatmap"},
+        {"name": "snapshots",     "description": "Shareable report snapshots — generate and retrieve"},
     ],
     lifespan=lifespan,
     docs_url="/docs",
@@ -207,7 +249,7 @@ app.add_middleware(
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "Accept", "Authorization"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Client-ID"],
     max_age=600,
 )
 
@@ -239,6 +281,6 @@ else:
     def root():
         return {
             "message": "Internet Stability Tracker API",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "docs": "/docs" if not _is_prod else "disabled in production",
         }

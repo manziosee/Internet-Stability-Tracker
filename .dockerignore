@@ -1,0 +1,30 @@
+# Dependencies — never needed in the Docker build context
+frontend/node_modules/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.venv/
+backend/venv/
+
+# Build outputs — the Dockerfile builds the frontend inside Docker
+frontend/build/
+
+# Dev/test artifacts
+.git/
+.github/
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+*.tmp
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+**/.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
