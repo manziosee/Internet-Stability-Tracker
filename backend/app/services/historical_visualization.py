@@ -25,8 +25,29 @@ class HistoricalVisualizationService:
         ).all()
         
         if not measurements:
-            return {"error": "No data available"}
-        
+            # Return an empty heatmap rather than an error so the UI can render
+            heatmap = []
+            current_date = cutoff.date()
+            end_date = datetime.utcnow().date()
+            while current_date <= end_date:
+                heatmap.append({
+                    "date": current_date.isoformat(),
+                    "avg_speed_mbps": 0,
+                    "intensity": 0,
+                    "measurement_count": 0,
+                    "weekday": current_date.strftime("%A")
+                })
+                current_date += timedelta(days=1)
+            return {
+                "heatmap": heatmap,
+                "days": days,
+                "total_measurements": 0,
+                "date_range": {
+                    "start": cutoff.date().isoformat(),
+                    "end": datetime.utcnow().date().isoformat()
+                }
+            }
+
         daily_data = defaultdict(list)
         for m in measurements:
             date_key = m.timestamp.date().isoformat()
@@ -102,12 +123,22 @@ class HistoricalVisualizationService:
         ).order_by(SpeedMeasurement.timestamp.desc()).limit(1000).all()
         
         if not measurements:
-            return {"error": "No data available"}
-        
+            return {
+                "histogram": [],
+                "total_measurements": 0,
+                "min_speed_mbps": 0, "max_speed_mbps": 0,
+                "avg_speed_mbps": 0, "median_speed_mbps": 0
+            }
+
         speeds = [m.download_speed for m in measurements if m.download_speed]
-        
+
         if not speeds:
-            return {"error": "No speed data"}
+            return {
+                "histogram": [],
+                "total_measurements": 0,
+                "min_speed_mbps": 0, "max_speed_mbps": 0,
+                "avg_speed_mbps": 0, "median_speed_mbps": 0
+            }
         
         min_speed = min(speeds)
         max_speed = max(speeds)
@@ -265,8 +296,23 @@ class HistoricalVisualizationService:
         ).order_by(SpeedMeasurement.timestamp.asc()).all()
         
         if not measurements:
-            return {"error": "No data available"}
-        
+            return {
+                "timeline": [],
+                "total_points": 0,
+                "time_range_hours": hours,
+                "statistics": {
+                    "avg_speed_mbps": 0, "min_speed_mbps": 0,
+                    "max_speed_mbps": 0, "outage_count": 0
+                },
+                "zoom_levels": [
+                    {"label": "1 hour",  "hours": 1},
+                    {"label": "6 hours", "hours": 6},
+                    {"label": "24 hours","hours": 24},
+                    {"label": "7 days",  "hours": 168},
+                    {"label": "30 days", "hours": 720},
+                ]
+            }
+
         timeline = []
         for m in measurements:
             timeline.append({

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, CircularProgress, Alert, Chip,
-  Card, CardContent, TextField, List, ListItem, ListItemIcon,
+  TextField, List, ListItem, ListItemIcon,
   ListItemText, LinearProgress, Accordion, AccordionSummary,
   AccordionDetails, IconButton, InputAdornment, Stack, useTheme,
   Skeleton, Divider, ToggleButtonGroup, ToggleButton,
@@ -578,6 +578,7 @@ export default function AIInsightsEnhancedPage() {
     } catch {}
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll(); }, []);
 
   return (
