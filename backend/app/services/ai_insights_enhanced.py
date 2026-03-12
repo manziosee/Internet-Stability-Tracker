@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
-from app.models.measurement import Measurement
+from app.models.measurement import SpeedMeasurement as Measurement
 
 
 class AIInsightsService:
@@ -285,29 +285,137 @@ class AIInsightsService:
         return patterns
     
     def answer_natural_query(self, client_id: str, query: str) -> Dict[str, Any]:
-        """Answer natural language queries about network performance"""
+        """Answer natural language queries about network performance using real DB data"""
         query_lower = query.lower()
-        
-        if "yesterday" in query_lower or "last 24" in query_lower:
-            return self._analyze_period(client_id, hours=24, period_name="yesterday")
-        elif "last week" in query_lower or "past week" in query_lower:
-            return self._analyze_period(client_id, hours=168, period_name="last week")
-        elif "slow" in query_lower or "bad" in query_lower:
-            return self.analyze_root_cause(client_id, hours=48)
-        elif "best time" in query_lower or "when to download" in query_lower:
-            return self._find_best_times(client_id)
-        elif "average" in query_lower or "typical" in query_lower:
-            return self._get_averages(client_id)
-        else:
+
+        # Load last 168 hours of measurements for this client
+        cutoff = datetime.utcnow() - timedelta(hours=168)
+        measurements = self.db.query(Measurement).filter(
+            and_(
+                Measurement.client_id == client_id,
+                Measurement.timestamp >= cutoff
+            )
+        ).order_by(Measurement.timestamp.asc()).all()
+
+        if not measurements:
             return {
-                "answer": "I can help you understand your network performance. Try asking: 'Why was my speed bad yesterday?' or 'When is the best time to download?'",
+                "answer": "No measurement data found for your session in the past week. Run a speed test first so I can analyze your connection.",
                 "suggestions": [
+                    "Run a speed test to get started",
                     "Why is my speed slow?",
-                    "What was my average speed last week?",
                     "When is the best time to download?",
-                    "Show me yesterday's performance"
                 ]
             }
+
+        # Compute stats from real data
+        speeds    = [m.download_speed for m in measurements if m.download_speed is not None]
+        uploads   = [m.upload_speed   for m in measurements if m.upload_speed   is not None]
+        pings     = [m.ping           for m in measurements if m.ping           is not None]
+        outages   = [m for m in measurements if m.is_outage]
+
+        avg_download   = round(statistics.mean(speeds),  2) if speeds   else 0
+        avg_upload     = round(statistics.mean(uploads), 2) if uploads  else 0
+        avg_ping       = round(statistics.mean(pings),   2) if pings    else 0
+        outage_count   = len(outages)
+        total_tests    = len(measurements)
+
+        # Hourly averages for best/worst hour
+        hourly = {}
+        for m in measurements:
+            if m.download_speed is not None:
+                h = m.timestamp.hour
+                hourly.setdefault(h, []).append(m.download_speed)
+        hourly_avgs = {h: statistics.mean(v) for h, v in hourly.items()} if hourly else {}
+        best_hour  = max(hourly_avgs, key=hourly_avgs.get) if hourly_avgs else None
+        worst_hour = min(hourly_avgs, key=hourly_avgs.get) if hourly_avgs else None
+
+        # Keyword routing
+        if "yesterday" in query_lower or "last 24" in query_lower:
+            return self._analyze_period(client_id, hours=24, period_name="the past 24 hours")
+
+        if "last week" in query_lower or "past week" in query_lower or "week" in query_lower:
+            best_str  = f"{best_hour:02d}:00" if best_hour  is not None else "N/A"
+            worst_str = f"{worst_hour:02d}:00" if worst_hour is not None else "N/A"
+            return {
+                "answer": (
+                    f"Over the past week I analyzed {total_tests} tests. "
+                    f"Your average download was {avg_download} Mbps, upload {avg_upload} Mbps, "
+                    f"ping {avg_ping} ms. "
+                    f"Best hour: {best_str}, worst hour: {worst_str}. "
+                    f"Outages detected: {outage_count}."
+                ),
+                "avg_download_mbps": avg_download,
+                "avg_upload_mbps":   avg_upload,
+                "avg_ping_ms":       avg_ping,
+                "outage_count":      outage_count,
+                "total_tests":       total_tests,
+                "best_hour":         best_hour,
+                "worst_hour":        worst_hour,
+            }
+
+        if "slow" in query_lower or "bad" in query_lower or "why" in query_lower or "issue" in query_lower:
+            result = self.analyze_root_cause(client_id, hours=48)
+            # Enrich with real stats summary
+            result["data_summary"] = {
+                "avg_download_mbps": avg_download,
+                "avg_ping_ms":       avg_ping,
+                "outage_count":      outage_count,
+                "total_tests":       total_tests,
+            }
+            return result
+
+        if "best time" in query_lower or "when to download" in query_lower or "download" in query_lower:
+            return self._find_best_times(client_id)
+
+        if "outage" in query_lower or "down" in query_lower or "offline" in query_lower:
+            return {
+                "answer": (
+                    f"In the past week, {outage_count} outage events were detected out of {total_tests} tests. "
+                    + (
+                        f"The worst period was around {worst_hour:02d}:00."
+                        if worst_hour is not None else ""
+                    )
+                ),
+                "outage_count": outage_count,
+                "total_tests":  total_tests,
+                "worst_hour":   worst_hour,
+            }
+
+        if "ping" in query_lower or "latency" in query_lower or "lag" in query_lower:
+            quality = "excellent" if avg_ping < 20 else "good" if avg_ping < 50 else "fair" if avg_ping < 100 else "poor"
+            return {
+                "answer": f"Your average ping over the past week is {avg_ping} ms ({quality}). Based on {total_tests} measurements.",
+                "avg_ping_ms": avg_ping,
+                "quality":     quality,
+                "total_tests": total_tests,
+            }
+
+        if "average" in query_lower or "typical" in query_lower or "speed" in query_lower:
+            return self._get_averages(client_id)
+
+        # Default: give a general summary with real data
+        best_str  = f"{best_hour:02d}:00" if best_hour  is not None else "N/A"
+        worst_str = f"{worst_hour:02d}:00" if worst_hour is not None else "N/A"
+        return {
+            "answer": (
+                f"Here's your network summary for the past week ({total_tests} tests): "
+                f"avg download {avg_download} Mbps, upload {avg_upload} Mbps, ping {avg_ping} ms. "
+                f"Best performance at {best_str}, slowest at {worst_str}. "
+                f"Outages: {outage_count}. "
+                "Ask me about specific periods, speeds, ping, outages, or the best time to download."
+            ),
+            "avg_download_mbps": avg_download,
+            "avg_upload_mbps":   avg_upload,
+            "avg_ping_ms":       avg_ping,
+            "outage_count":      outage_count,
+            "total_tests":       total_tests,
+            "suggestions": [
+                "Why is my speed slow?",
+                "What was my average speed last week?",
+                "When is the best time to download?",
+                "How many outages did I have?",
+            ]
+        }
     
     def _analyze_period(self, client_id: str, hours: int, period_name: str) -> Dict[str, Any]:
         """Analyze specific time period"""

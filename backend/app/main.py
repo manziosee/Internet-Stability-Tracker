@@ -31,6 +31,10 @@ from .api.routes import router
 from .core.config import settings
 from .core.database import engine, Base
 from .scheduler import start_scheduler
+from .models.measurement import (  # noqa: F401 - ensures tables are created
+    SpeedMeasurement, CommunityReport, OutageEvent,
+    AlertConfig, AlertLog, UserPreferences, SecurityScan,
+)
 
 logging.basicConfig(
     level=logging.INFO,

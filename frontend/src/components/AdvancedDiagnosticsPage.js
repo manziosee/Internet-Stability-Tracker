@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box, Typography, Paper, Button, CircularProgress, Alert, Chip,
   Card, CardContent, LinearProgress, Tabs, Tab, TextField,
   Accordion, AccordionSummary, AccordionDetails, List, ListItem,
-  ListItemText, ListItemIcon, Divider, Stack, useTheme, Tooltip,
+  ListItemText, ListItemIcon, Stack, useTheme,
 } from '@mui/material';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
 import SpeedIcon from '@mui/icons-material/Speed';
@@ -13,7 +13,6 @@ import VpnLockIcon from '@mui/icons-material/VpnLock';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -393,20 +392,27 @@ function DNSLeakTab({ data, loading, onRun }) {
               <Card sx={{ background: isDark ? '#080808' : '#fff', border: '1px solid rgba(240,194,75,0.12)', height: '100%' }}>
                 <CardContent>
                   <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                    Location Match
+                    DNS Server Info
                   </Typography>
                   <Box sx={{ mt: 1 }}>
-                    <Typography variant="body2">
-                      Your Country: <strong>{data.your_country}</strong>
-                    </Typography>
-                    <Typography variant="body2">
-                      DNS Country: <strong>{data.dns_server_country}</strong>
-                    </Typography>
+                    {data.dns_server_ip && (
+                      <Typography variant="body2">
+                        DNS IP: <strong>{data.dns_server_ip}</strong>
+                      </Typography>
+                    )}
+                    {data.dns_server_country && (
+                      <Typography variant="body2">
+                        DNS Country: <strong>{data.dns_server_country}</strong>
+                      </Typography>
+                    )}
                     {data.dns_server_isp && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                         DNS ISP: {data.dns_server_isp}
                       </Typography>
                     )}
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      Secure Provider: <strong>{data.is_secure_provider ? 'Yes ✅' : 'No ⚠️'}</strong>
+                    </Typography>
                   </Box>
                 </CardContent>
               </Card>

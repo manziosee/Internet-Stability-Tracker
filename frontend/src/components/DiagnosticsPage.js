@@ -16,7 +16,6 @@ import LocationOnIcon from '@mui/icons-material/LocationOn';
 import BusinessIcon from '@mui/icons-material/Business';
 import DevicesIcon from '@mui/icons-material/Devices';
 import { getDiagnostics, getMyConnection } from '../services/api';
-import axios from 'axios';
 
 function detectOS() {
   const ua = navigator.userAgent || '';
@@ -73,37 +72,30 @@ export default function DiagnosticsPage() {
   const [connLoading, setConnLoading] = useState(true);
 
   // Auto-load connection info on mount
-  // Call ip-api.com directly from the browser so the real public IP is detected
-  // (not the backend server's IP), then merge in last speed-test from DB.
+  // Backend /my-connection does the geo lookup server-side (avoids browser HTTP mixed-content)
   useEffect(() => {
     setConnLoading(true);
-    Promise.all([
-      axios.get('http://ip-api.com/json/', {
-        params: { fields: 'status,country,countryCode,regionName,city,isp,org,as,query,lat,lon' },
-      }).catch(() => ({ data: {} })),
-      getMyConnection().catch(() => ({ data: {} })),
-    ]).then(([geoRes, dbRes]) => {
-      const geo = geoRes.data || {};
-      const db  = dbRes.data  || {};
+    getMyConnection().then((res) => {
+      const d = res.data || {};
       setConnInfo({
-        public_ip:           geo.query      || db.public_ip  || null,
-        isp:                 geo.isp        || db.isp        || null,
-        org:                 geo.org        || db.org        || null,
-        asn:                 geo.as         || db.asn        || null,
-        country:             geo.country    || db.country    || null,
-        country_code:        geo.countryCode|| db.country_code|| null,
-        region:              geo.regionName || db.region     || null,
-        city:                geo.city       || db.city       || null,
-        lat:                 geo.lat        || null,
-        lon:                 geo.lon        || null,
+        public_ip:           d.public_ip    || null,
+        isp:                 d.isp          || null,
+        org:                 d.org          || null,
+        asn:                 d.asn          || null,
+        country:             d.country      || null,
+        country_code:        d.country_code || null,
+        region:              d.region       || null,
+        city:                d.city         || null,
+        lat:                 d.lat          || null,
+        lon:                 d.lon          || null,
         device_os:           detectOS(),
-        last_measured_isp:   db.last_measured_isp  || null,
-        last_download_mbps:  db.last_download_mbps || null,
-        last_upload_mbps:    db.last_upload_mbps   || null,
-        last_ping_ms:        db.last_ping_ms        || null,
-        last_test_at:        db.last_test_at        || null,
+        last_measured_isp:   d.last_measured_isp  || null,
+        last_download_mbps:  d.last_download_mbps || null,
+        last_upload_mbps:    d.last_upload_mbps   || null,
+        last_ping_ms:        d.last_ping_ms        || null,
+        last_test_at:        d.last_test_at        || null,
       });
-    }).finally(() => setConnLoading(false));
+    }).catch(() => {}).finally(() => setConnLoading(false));
   }, []);
 
   const runDiagnostics = async () => {
@@ -180,25 +172,40 @@ export default function DiagnosticsPage() {
           ) : connInfo ? (
             <Grid container spacing={3}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoRow icon={PublicIcon}     label="Public IP"  value={connInfo.public_ip} mono />
-                <InfoRow icon={BusinessIcon}   label="ISP"        value={connInfo.isp} />
-                <InfoRow icon={BusinessIcon}   label="Org / ASN"  value={connInfo.asn} />
-                <InfoRow icon={DevicesIcon}    label="Device OS"  value={connInfo.device_os} />
+                <InfoRow icon={PublicIcon}   label="Public IP"  value={connInfo.public_ip} mono />
+                <InfoRow icon={BusinessIcon} label="ISP"        value={connInfo.isp} />
+                <InfoRow icon={BusinessIcon} label="Org / ASN"  value={connInfo.org || connInfo.asn} />
+                <InfoRow icon={DevicesIcon}  label="Device OS"  value={connInfo.device_os} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoRow icon={LocationOnIcon} label="Country"    value={connInfo.country ? `${connInfo.country} (${connInfo.country_code})` : null} />
-                <InfoRow icon={LocationOnIcon} label="Region"     value={connInfo.region} />
-                <InfoRow icon={LocationOnIcon} label="City"       value={connInfo.city} />
-                {connInfo.lat && connInfo.lon && (
-                  <InfoRow icon={LocationOnIcon} label="Coordinates" value={`${connInfo.lat.toFixed(4)}, ${connInfo.lon.toFixed(4)}`} mono />
+                <InfoRow icon={LocationOnIcon} label="Country"
+                  value={connInfo.country
+                    ? `${connInfo.country}${connInfo.country_code ? ` (${connInfo.country_code})` : ''}`
+                    : null} />
+                <InfoRow icon={LocationOnIcon} label="Region" value={connInfo.region} />
+                <InfoRow icon={LocationOnIcon} label="City"   value={connInfo.city} />
+                {connInfo.lat != null && connInfo.lon != null && (
+                  <InfoRow icon={LocationOnIcon} label="Coordinates"
+                    value={`${Number(connInfo.lat).toFixed(4)}, ${Number(connInfo.lon).toFixed(4)}`} mono />
                 )}
               </Grid>
+
+              {/* Geo fallback notice */}
+              {!connInfo.country && connInfo.public_ip && connInfo.public_ip !== 'Unknown' && (
+                <Grid size={{ xs: 12 }}>
+                  <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+                    IP detected ({connInfo.public_ip}) but geo lookup is temporarily unavailable. Location info will appear shortly.
+                  </Alert>
+                </Grid>
+              )}
 
               {/* Last speed test row */}
               {connInfo.last_download_mbps != null && (
                 <Grid size={{ xs: 12 }}>
                   <Box sx={{ mt: 0.5, pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Last speed test via {connInfo.last_measured_isp}:</Typography>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      Last speed test{connInfo.last_measured_isp ? ` via ${connInfo.last_measured_isp}` : ''}:
+                    </Typography>
                     {[
                       { label: `↓ ${connInfo.last_download_mbps} Mbps`, color: '#43A047' },
                       { label: `↑ ${connInfo.last_upload_mbps} Mbps`,   color: '#42A5F5' },
@@ -207,15 +214,28 @@ export default function DiagnosticsPage() {
                       <Chip key={label} label={label} size="small"
                         sx={{ fontWeight: 800, fontSize: 11, bgcolor: `${color}14`, color, border: `1px solid ${color}30` }} />
                     ))}
-                    <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto' }}>
-                      {new Date(connInfo.last_test_at).toLocaleString()}
-                    </Typography>
+                    {connInfo.last_test_at && (
+                      <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto' }}>
+                        {new Date(connInfo.last_test_at).toLocaleString()}
+                      </Typography>
+                    )}
                   </Box>
+                </Grid>
+              )}
+
+              {/* No speed test yet */}
+              {connInfo.last_download_mbps == null && (
+                <Grid size={{ xs: 12 }}>
+                  <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+                    No speed test recorded yet. Run a speed test from the Dashboard to see your latest results here.
+                  </Alert>
                 </Grid>
               )}
             </Grid>
           ) : (
-            <Typography variant="body2" color="text.disabled">Could not detect connection info.</Typography>
+            <Alert severity="warning" sx={{ fontSize: '0.85rem' }}>
+              Could not reach the connection info endpoint. Check that the backend is running.
+            </Alert>
           )}
         </Paper>
       </motion.div>
