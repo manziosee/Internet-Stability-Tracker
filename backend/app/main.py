@@ -202,6 +202,14 @@ detects outages, and visualises performance across ISPs.
 - **Outage webhook/email alerts** — configurable via `ALERT_WEBHOOK_URL` / SMTP secrets
 - **Sentry error tracking** — activates when `SENTRY_DSN` env var is set
 
+### New in v2.1 (ML & Security Features)
+- **ML Predictions** (`/api/ml/*`) — speed forecasts, outage probability, best download times, congestion predictions
+- **Smart Alerts** (`/api/alerts/config`) — multi-channel notifications (Telegram, Discord, SMS) with custom thresholds
+- **Advanced Diagnostics** (`/api/diagnostics/*`) — packet loss, jitter, bufferbloat, MTU discovery, DNS leak, VPN speed
+- **Network Security** (`/api/security/*`) — port scanning, intrusion detection, privacy score, VPN recommendations
+- **Historical Visualization** (`/api/history/*`) — heatmap calendar, distribution histogram, percentiles, correlation analysis
+- **Enhanced AI Insights** (`/api/ai-insights/*`) — root cause analysis, predictive maintenance, advanced anomaly detection, NL chatbot
+
 ### Rate limits
 | Endpoint | Limit |
 |----------|-------|
@@ -223,15 +231,23 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
     openapi_tags=[
         {"name": "measurements",  "description": "Speed test records — query and clear history"},
         {"name": "stats",         "description": "Aggregated statistics for a configurable time window"},
-        {"name": "alerts",        "description": "Current outage status and recent 48-hour summary"},
+        {"name": "alerts",        "description": "Current outage status, alert configuration, and recent 48-hour summary"},
         {"name": "outages",       "description": "Individual measurements flagged as outages"},
         {"name": "isp",           "description": "ISP comparison, reliability scores and letter grades"},
         {"name": "reports",       "description": "Community-submitted network issue reports"},
         {"name": "outage-events", "description": "Structured outage event log with duration and severity"},
         {"name": "network",       "description": "Real-time system bandwidth, bandwidth probe, traceroute, multi-region latency"},
         {"name": "speed-test",    "description": "On-demand speed test trigger"},
-        {"name": "insights",      "description": "AI-powered statistical pattern analysis, anomaly detection, comparison, heatmap"},
+        {"name": "insights",      "description": "AI-powered statistical pattern analysis, anomaly detection, comparison, heatmap, root cause, predictive maintenance"},
         {"name": "snapshots",     "description": "Shareable report snapshots — generate and retrieve"},
+        {"name": "predictions",   "description": "ML predictions: speed forecasts, outage probability, best download times, congestion"},
+        {"name": "diagnostics",   "description": "Advanced network diagnostics: packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed, router health"},
+        {"name": "security",      "description": "Network security: port scanning, intrusion detection, privacy score, VPN recommendations"},
+        {"name": "history",       "description": "Historical data visualization: heatmap calendar, distribution, percentiles, correlation"},
+        {"name": "gaming",        "description": "Gaming-specific metrics: latency stability, packet loss, jitter for gaming"},
+        {"name": "video",         "description": "Video call quality metrics: jitter, packet loss, bandwidth for video conferencing"},
+        {"name": "recommendations", "description": "Activity recommendations based on current network conditions"},
+        {"name": "preferences",   "description": "User preferences and customization settings"},
     ],
     lifespan=lifespan,
     docs_url="/docs",

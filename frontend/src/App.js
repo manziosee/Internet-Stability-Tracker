@@ -18,6 +18,10 @@ import HistoryIcon from '@mui/icons-material/History';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import InsightsIcon from '@mui/icons-material/Insights';
+import SecurityIcon from '@mui/icons-material/Security';
+import BiotechIcon from '@mui/icons-material/Biotech';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -28,17 +32,60 @@ import TimelinePage from './components/TimelinePage';
 import DiagnosticsPage from './components/DiagnosticsPage';
 import AIInsightsPage from './components/AIInsightsPage';
 import AdvancedInsightsPage from './components/AdvancedInsightsPage';
+import GamingModePage from './components/GamingModePage';
+import VideoCallQualityPage from './components/VideoCallQualityPage';
+import CoolFeaturesPage from './components/CoolFeaturesPage';
+import SecurityDashboard from './components/SecurityDashboard';
+import AdvancedDiagnosticsPage from './components/AdvancedDiagnosticsPage';
+import HistoricalVisualizationPage from './components/HistoricalVisualizationPage';
+import AIInsightsEnhancedPage from './components/AIInsightsEnhancedPage';
 
+// Groups used in the desktop nav for visual separation
 const NAV_ITEMS = [
-  { label: 'Dashboard',    path: '/',           icon: <DashboardIcon fontSize="small" /> },
-  { label: 'Status',       path: '/status',     icon: <PublicIcon fontSize="small" /> },
-  { label: 'Outage Map',   path: '/map',        icon: <MapIcon fontSize="small" /> },
-  { label: 'Report Issue', path: '/report',     icon: <ReportProblemIcon fontSize="small" /> },
-  { label: 'ISP Reliability', path: '/isp',    icon: <StarIcon fontSize="small" /> },
-  { label: 'Timeline',     path: '/timeline',   icon: <HistoryIcon fontSize="small" /> },
-  { label: 'Diagnostics',  path: '/diagnostics',icon: <NetworkCheckIcon fontSize="small" /> },
-  { label: 'AI Insights',  path: '/insights',   icon: <AutoAwesomeIcon fontSize="small" /> },
-  { label: 'Advanced',     path: '/advanced',   icon: <InsightsIcon fontSize="small" /> },
+  // Core
+  { label: 'Dashboard',    path: '/',                     icon: <DashboardIcon fontSize="small" />,   group: 'core' },
+  { label: 'Status',       path: '/status',               icon: <PublicIcon fontSize="small" />,      group: 'core' },
+  { label: 'Outage Map',   path: '/map',                  icon: <MapIcon fontSize="small" />,         group: 'core' },
+  { label: 'Report',       path: '/report',               icon: <ReportProblemIcon fontSize="small" />,group: 'core' },
+  { label: 'ISP',          path: '/isp',                  icon: <StarIcon fontSize="small" />,        group: 'core' },
+  { label: 'Cool',         path: '/cool',                 icon: <AutoAwesomeIcon fontSize="small" />, group: 'core' },
+  // Group 1 — Advanced Diagnostics
+  { label: 'Diagnostics',  path: '/diagnostics-advanced', icon: <BiotechIcon fontSize="small" />,     group: 'g1' },
+  // Group 2 — Historical Visualization
+  { label: 'Historical',   path: '/history',              icon: <TimelineIcon fontSize="small" />,    group: 'g2' },
+  // Group 3 — AI Insights
+  { label: 'AI Insights',  path: '/ai-enhanced',          icon: <PsychologyIcon fontSize="small" />,  group: 'g3' },
+  // Other
+  { label: 'Advanced',     path: '/advanced',             icon: <InsightsIcon fontSize="small" />,    group: 'other' },
+  { label: 'Security',     path: '/security',             icon: <SecurityIcon fontSize="small" />,    group: 'other' },
+];
+
+// Full drawer list including hidden routes
+const DRAWER_ITEMS = [
+  { section: 'Core', items: [
+    { label: 'Dashboard',    path: '/',       icon: <DashboardIcon /> },
+    { label: 'Status',       path: '/status', icon: <PublicIcon /> },
+    { label: 'Outage Map',   path: '/map',    icon: <MapIcon /> },
+    { label: 'Report Issue', path: '/report', icon: <ReportProblemIcon /> },
+    { label: 'ISP Reliability', path: '/isp', icon: <StarIcon /> },
+    { label: 'Cool Features',path: '/cool',   icon: <AutoAwesomeIcon /> },
+  ]},
+  { section: 'Group 1 — Advanced Diagnostics', items: [
+    { label: 'Advanced Diagnostics', path: '/diagnostics-advanced', icon: <BiotechIcon /> },
+    { label: 'Basic Diagnostics',    path: '/diagnostics',          icon: <NetworkCheckIcon /> },
+  ]},
+  { section: 'Group 2 — Historical Data', items: [
+    { label: 'Historical Visualization', path: '/history',   icon: <TimelineIcon /> },
+    { label: 'Timeline',                 path: '/timeline',  icon: <HistoryIcon /> },
+  ]},
+  { section: 'Group 3 — AI Insights', items: [
+    { label: 'AI Insights Enhanced', path: '/ai-enhanced', icon: <PsychologyIcon /> },
+    { label: 'AI Insights (Basic)',  path: '/insights',    icon: <AutoAwesomeIcon /> },
+  ]},
+  { section: 'Other', items: [
+    { label: 'Advanced',  path: '/advanced', icon: <InsightsIcon /> },
+    { label: 'Security',  path: '/security', icon: <SecurityIcon /> },
+  ]},
 ];
 
 function NavBar() {
@@ -111,30 +158,41 @@ function NavBar() {
               <MenuIcon />
             </IconButton>
           ) : (
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              {NAV_ITEMS.map((item) => {
+            <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+              {NAV_ITEMS.map((item, idx) => {
                 const active = location.pathname === item.path;
+                const prevGroup = idx > 0 ? NAV_ITEMS[idx - 1].group : item.group;
+                const showDivider = idx > 0 && prevGroup !== item.group;
                 return (
-                  <Button
-                    key={item.path}
-                    component={Link}
-                    to={item.path}
-                    startIcon={item.icon}
-                    sx={{
-                      color: active ? '#000' : 'rgba(255,255,255,0.75)',
-                      fontWeight: active ? 800 : 500,
-                      bgcolor: active ? '#f0c24b' : 'transparent',
-                      borderRadius: 2,
-                      px: 1.5,
-                      fontSize: 13,
-                      '&:hover': {
-                        bgcolor: active ? '#f6d978' : 'rgba(240,194,75,0.12)',
-                        color: active ? '#000' : '#f0c24b',
-                      },
-                    }}
-                  >
-                    {item.label}
-                  </Button>
+                  <React.Fragment key={item.path}>
+                    {showDivider && (
+                      <Box sx={{ width: '1px', height: 20, bgcolor: 'rgba(240,194,75,0.2)', mx: 0.25 }} />
+                    )}
+                    <Tooltip title={item.label} placement="bottom" arrow>
+                      <Button
+                        component={Link}
+                        to={item.path}
+                        startIcon={item.icon}
+                        sx={{
+                          color: active ? '#000' : 'rgba(255,255,255,0.75)',
+                          fontWeight: active ? 800 : 500,
+                          bgcolor: active ? '#f0c24b' : 'transparent',
+                          borderRadius: 2,
+                          px: 1.2,
+                          fontSize: 12,
+                          minWidth: 'auto',
+                          whiteSpace: 'nowrap',
+                          '& .MuiButton-startIcon': { mr: 0.4 },
+                          '&:hover': {
+                            bgcolor: active ? '#f6d978' : 'rgba(240,194,75,0.12)',
+                            color: active ? '#000' : '#f0c24b',
+                          },
+                        }}
+                      >
+                        {item.label}
+                      </Button>
+                    </Tooltip>
+                  </React.Fragment>
                 );
               })}
             </Box>
@@ -142,44 +200,63 @@ function NavBar() {
         </Toolbar>
       </AppBar>
 
-      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box sx={{ width: 260, pt: 2 }}>
-          <Box sx={{ px: 2, pb: 2 }}>
-            <Typography variant="subtitle1" fontWeight={700} color="primary">
-              Internet Stability Tracker
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Community Network Monitor
-            </Typography>
+      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}
+        PaperProps={{ sx: { width: 270, background: '#080808', borderLeft: '1px solid rgba(240,194,75,0.2)' } }}>
+        <Box sx={{ pt: 2, pb: 4 }}>
+          <Box sx={{ px: 2.5, pb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <WifiIcon sx={{ fontSize: 20, color: '#f0c24b' }} />
+              <Box>
+                <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#f0c24b', lineHeight: 1.1 }}>
+                  IST
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>
+                  Internet Stability Tracker
+                </Typography>
+              </Box>
+            </Box>
           </Box>
-          <Divider />
-          <List sx={{ pt: 1 }}>
-            {NAV_ITEMS.map((item) => {
-              const active = location.pathname === item.path;
-              return (
-                <ListItem key={item.path} disablePadding sx={{ px: 1, mb: 0.5 }}>
-                  <ListItemButton
-                    component={Link}
-                    to={item.path}
-                    selected={active}
-                    onClick={() => setDrawerOpen(false)}
-                    sx={{
-                      borderRadius: 2,
-                      '&.Mui-selected': {
-                        bgcolor: 'primary.main',
-                        color: 'white',
-                        '& .MuiListItemIcon-root': { color: 'white' },
-                        '&:hover': { bgcolor: 'primary.dark' },
-                      },
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 38 }}>{item.icon}</ListItemIcon>
-                    <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: active ? 700 : 500 }} />
-                  </ListItemButton>
-                </ListItem>
-              );
-            })}
-          </List>
+          <Divider sx={{ borderColor: 'rgba(240,194,75,0.15)' }} />
+          {DRAWER_ITEMS.map((group) => (
+            <Box key={group.section}>
+              <Typography variant="caption" sx={{ px: 2.5, pt: 2, pb: 0.5, display: 'block', color: 'rgba(240,194,75,0.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', fontSize: 10 }}>
+                {group.section}
+              </Typography>
+              <List dense sx={{ px: 1, pb: 0.5 }}>
+                {group.items.map((item) => {
+                  const active = location.pathname === item.path;
+                  return (
+                    <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
+                      <ListItemButton
+                        component={Link}
+                        to={item.path}
+                        selected={active}
+                        onClick={() => setDrawerOpen(false)}
+                        sx={{
+                          borderRadius: 2, py: 0.75,
+                          '&.Mui-selected': {
+                            bgcolor: 'rgba(240,194,75,0.15)',
+                            '& .MuiListItemIcon-root': { color: '#f0c24b' },
+                            '& .MuiListItemText-primary': { color: '#f0c24b', fontWeight: 700 },
+                          },
+                          '&:hover': { bgcolor: 'rgba(240,194,75,0.07)' },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 34, color: active ? '#f0c24b' : 'rgba(255,255,255,0.5)' }}>
+                          {React.cloneElement(item.icon, { fontSize: 'small' })}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={item.label}
+                          primaryTypographyProps={{ fontSize: 13, fontWeight: active ? 700 : 400, color: active ? '#f0c24b' : 'rgba(255,255,255,0.75)' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
+              </List>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.05)', mx: 2 }} />
+            </Box>
+          ))}
         </Box>
       </Drawer>
     </>
@@ -212,6 +289,9 @@ function App() {
           <Routes>
             <Route path="/"           element={<Dashboard />} />
             <Route path="/status"     element={<StatusPage />} />
+            <Route path="/cool"       element={<CoolFeaturesPage />} />
+            <Route path="/gaming"     element={<GamingModePage />} />
+            <Route path="/video"      element={<VideoCallQualityPage />} />
             <Route path="/map"        element={<OutageMap />} />
             <Route path="/report"     element={<ReportForm />} />
             <Route path="/isp"        element={<ISPReliabilityPage />} />
@@ -219,6 +299,10 @@ function App() {
             <Route path="/diagnostics" element={<DiagnosticsPage />} />
             <Route path="/insights"   element={<AIInsightsPage />} />
             <Route path="/advanced"   element={<AdvancedInsightsPage />} />
+            <Route path="/security"   element={<SecurityDashboard />} />
+            <Route path="/diagnostics-advanced" element={<AdvancedDiagnosticsPage />} />
+            <Route path="/history"    element={<HistoricalVisualizationPage />} />
+            <Route path="/ai-enhanced" element={<AIInsightsEnhancedPage />} />
           </Routes>
         </Box>
       </Box>

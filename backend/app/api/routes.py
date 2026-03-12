@@ -13,6 +13,7 @@ from ..core.database import get_db
 from ..core.config import settings
 from ..models.measurement import SpeedMeasurement, CommunityReport, OutageEvent
 from ..services.speed_test import SpeedTestService
+from ..services.ml_predictions import NetworkPredictor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1549,25 +1550,78 @@ def get_anomalies(
 
 @router.get("/traceroute", tags=["network"],
             summary="Traceroute from server",
-            description="Runs traceroute/tracepath from the Fly.io server to a target host (max 20 hops, 2s timeout).")
-def run_traceroute(host: str = Query(default="8.8.8.8")):
+            description="Runs traceroute/tracepath from the Fly.io server to a target host (max 20 hops, 2s timeout). Accepts any valid hostname or IP address.")
+def run_traceroute(host: str = Query(default="8.8.8.8", description="Target hostname or IP address")):
     import subprocess as _sp
+    import re
 
-    ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:")
-    if not host or not all(c in ALLOWED for c in host) or len(host) > 253:
-        raise HTTPException(status_code=400, detail="Invalid host.")
+    # Validate host: allow hostnames, IPv4, and IPv6
+    # Hostname: alphanumeric + dots + hyphens
+    # IPv4: standard dotted notation
+    # IPv6: standard colon notation
+    HOSTNAME_PATTERN = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
+    IPV4_PATTERN = r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+    IPV6_PATTERN = r'^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|::)$'
+    
+    if not host or len(host) > 253:
+        raise HTTPException(status_code=400, detail="Invalid host: must be 1-253 characters")
+    
+    is_valid = (
+        re.match(HOSTNAME_PATTERN, host) or 
+        re.match(IPV4_PATTERN, host) or 
+        re.match(IPV6_PATTERN, host)
+    )
+    
+    if not is_valid:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid host format. Must be a valid hostname, IPv4, or IPv6 address."
+        )
 
-    for cmd in [["traceroute", "-n", "-m", "20", "-w", "2", host],
-                ["tracepath",  "-n", "-m", "20", host]]:
+    # Try traceroute first, then fall back to tracepath
+    commands = [
+        ["traceroute", "-n", "-m", "20", "-w", "2", host],
+        ["tracepath", "-n", "-m", "20", host],
+    ]
+    
+    for cmd in commands:
         try:
-            res = _sp.run(cmd, capture_output=True, text=True, timeout=35)
-            if res.returncode == 0 or res.stdout.strip():
-                hops = [l for l in res.stdout.splitlines() if l.strip()]
-                return {"host": host, "hops": hops, "tool": cmd[0], "raw": res.stdout}
-        except (FileNotFoundError, _sp.TimeoutExpired):
+            logger.info(f"Running traceroute to {host} using {cmd[0]}")
+            res = _sp.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=35,
+                check=False  # Don't raise on non-zero exit
+            )
+            
+            # Check if we got any output
+            if res.stdout.strip():
+                hops = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+                return {
+                    "host": host,
+                    "hops": hops,
+                    "tool": cmd[0],
+                    "raw": res.stdout,
+                    "success": True,
+                    "hop_count": len(hops),
+                }
+        except _sp.TimeoutExpired:
+            logger.warning(f"Traceroute to {host} timed out using {cmd[0]}")
+            continue
+        except FileNotFoundError:
+            logger.warning(f"{cmd[0]} not found, trying next tool")
+            continue
+        except Exception as e:
+            logger.error(f"Traceroute failed with {cmd[0]}: {e}")
             continue
 
-    raise HTTPException(status_code=503, detail="traceroute/tracepath not available on this server.")
+    # If we get here, all methods failed
+    raise HTTPException(
+        status_code=503, 
+        detail="Traceroute tools (traceroute/tracepath) are not available on this server. "
+               "Install them with: apt-get install traceroute iputils-tracepath"
+    )
 
 
 # ─── Shareable report snapshots ───────────────────────────────────────────────
@@ -1692,3 +1746,920 @@ async def broadcast_measurement(measurement_dict: dict):
     for ws in dead:
         if ws in _ws_connections:
             _ws_connections.remove(ws)
+
+
+# ─── Gaming Metrics ───────────────────────────────────────────────────────────
+
+@router.get("/gaming-metrics", tags=["gaming"],
+            summary="Gaming quality metrics",
+            description="Returns ping, jitter, packet loss, and gaming quality score for competitive gaming.")
+def get_gaming_metrics(
+    hours: int = Query(1, ge=1, le=24),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Gaming-specific metrics: ping stability, jitter, and quality score."""
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    rows = _scope(db.query(SpeedMeasurement), client_id).filter(
+        SpeedMeasurement.timestamp >= cutoff
+    ).all()
+
+    if not rows:
+        return {
+            "avg_ping": None,
+            "min_ping": None,
+            "max_ping": None,
+            "jitter": None,
+            "packet_loss": 0,
+            "gaming_score": "N/A",
+            "grade": "N/A",
+            "recommended_for": [],
+            "not_recommended": [],
+            "data_points": 0,
+        }
+
+    pings = [r.ping for r in rows if r.ping is not None]
+    if not pings:
+        return {"error": "No ping data available"}
+
+    avg_ping = sum(pings) / len(pings)
+    min_ping = min(pings)
+    max_ping = max(pings)
+    
+    # Jitter = standard deviation of ping
+    import statistics
+    jitter = statistics.stdev(pings) if len(pings) > 1 else 0
+    
+    # Estimate packet loss from outages
+    outages = sum(1 for r in rows if r.is_outage)
+    packet_loss = round((outages / len(rows)) * 100, 2)
+
+    # Gaming score calculation
+    ping_score = max(0, 100 - avg_ping)  # Lower ping = higher score
+    jitter_score = max(0, 100 - (jitter * 5))  # Lower jitter = higher score
+    loss_score = max(0, 100 - (packet_loss * 10))  # No loss = 100
+    
+    gaming_score = round((ping_score * 0.5 + jitter_score * 0.3 + loss_score * 0.2), 1)
+
+    # Grade assignment
+    if gaming_score >= 90:   grade = "A+"
+    elif gaming_score >= 80: grade = "A"
+    elif gaming_score >= 70: grade = "B"
+    elif gaming_score >= 60: grade = "C"
+    elif gaming_score >= 50: grade = "D"
+    else:                    grade = "F"
+
+    # Game recommendations
+    recommended = []
+    not_recommended = []
+    
+    games = [
+        {"name": "FPS Games (CS:GO, Valorant)", "max_ping": 50, "max_jitter": 10},
+        {"name": "MOBA (LoL, Dota 2)", "max_ping": 80, "max_jitter": 15},
+        {"name": "Battle Royale (Fortnite, PUBG)", "max_ping": 100, "max_jitter": 20},
+        {"name": "Racing Games", "max_ping": 60, "max_jitter": 12},
+        {"name": "Fighting Games", "max_ping": 40, "max_jitter": 8},
+        {"name": "MMORPGs", "max_ping": 150, "max_jitter": 30},
+    ]
+
+    for game in games:
+        if avg_ping <= game["max_ping"] and jitter <= game["max_jitter"]:
+            recommended.append(game["name"])
+        else:
+            not_recommended.append({
+                "name": game["name"],
+                "reason": f"Ping: {avg_ping:.0f}ms (need <{game['max_ping']}ms), Jitter: {jitter:.1f}ms (need <{game['max_jitter']}ms)"
+            })
+
+    return {
+        "avg_ping": round(avg_ping, 1),
+        "min_ping": round(min_ping, 1),
+        "max_ping": round(max_ping, 1),
+        "jitter": round(jitter, 1),
+        "packet_loss": packet_loss,
+        "gaming_score": gaming_score,
+        "grade": grade,
+        "recommended_for": recommended,
+        "not_recommended": not_recommended,
+        "data_points": len(rows),
+        "hours_analyzed": hours,
+    }
+
+
+# ─── Video Call Quality ───────────────────────────────────────────────────────
+
+@router.get("/video-call-quality", tags=["video"],
+            summary="Video call quality predictor",
+            description="Predicts video call quality for Zoom, Teams, Google Meet based on current connection.")
+def predict_video_quality(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Predicts video call quality for different platforms."""
+    # Get most recent measurement
+    latest = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .order_by(desc(SpeedMeasurement.timestamp))
+        .first()
+    )
+
+    if not latest:
+        return {"error": "No speed test data available. Run a test first."}
+
+    download = latest.download_speed
+    upload = latest.upload_speed
+    ping = latest.ping
+
+    # Platform requirements (Mbps per participant)
+    platforms = {
+        "zoom": {
+            "hd_1080p": {"down": 3.8, "up": 3.0},
+            "hd_720p": {"down": 2.6, "up": 1.8},
+            "sd": {"down": 1.2, "up": 1.2},
+        },
+        "teams": {
+            "hd_1080p": {"down": 4.0, "up": 4.0},
+            "hd_720p": {"down": 2.5, "up": 2.5},
+            "sd": {"down": 1.5, "up": 1.5},
+        },
+        "google_meet": {
+            "hd_1080p": {"down": 3.2, "up": 3.2},
+            "hd_720p": {"down": 2.2, "up": 2.2},
+            "sd": {"down": 1.0, "up": 1.0},
+        },
+    }
+
+    results = {}
+    recommendations = []
+
+    for platform, qualities in platforms.items():
+        # Determine best quality
+        quality = "sd"
+        participants = 1
+        
+        if download >= qualities["hd_1080p"]["down"] and upload >= qualities["hd_1080p"]["up"]:
+            quality = "HD 1080p"
+            participants = int(min(download / qualities["hd_1080p"]["down"], 
+                                 upload / qualities["hd_1080p"]["up"]))
+        elif download >= qualities["hd_720p"]["down"] and upload >= qualities["hd_720p"]["up"]:
+            quality = "HD 720p"
+            participants = int(min(download / qualities["hd_720p"]["down"],
+                                 upload / qualities["hd_720p"]["up"]))
+        else:
+            quality = "SD"
+            participants = int(min(download / qualities["sd"]["down"],
+                                 upload / qualities["sd"]["up"]))
+
+        # Status based on ping
+        if ping < 100:
+            status = "excellent"
+        elif ping < 200:
+            status = "good"
+        else:
+            status = "poor"
+
+        results[platform] = {
+            "quality": quality,
+            "participants": max(1, participants),
+            "status": status,
+            "ping": round(ping, 1),
+        }
+
+    # Generate recommendations
+    if download < 5:
+        recommendations.append("⚠️ Turn off video to improve call stability")
+    if upload < 3:
+        recommendations.append("⚠️ Avoid screen sharing, upload speed is low")
+    if ping > 150:
+        recommendations.append("⚠️ High latency detected, expect audio delays")
+    if download >= 25:
+        recommendations.append("✅ Your connection can handle HD video for large meetings")
+    if results["zoom"]["participants"] > 10:
+        recommendations.append("✅ You can host large Zoom meetings with HD video")
+
+    return {
+        "current_speed": {
+            "download": round(download, 1),
+            "upload": round(upload, 1),
+            "ping": round(ping, 1),
+        },
+        "platforms": results,
+        "recommendations": recommendations,
+        "overall_status": "excellent" if download >= 10 and ping < 100 else "good" if download >= 5 else "poor",
+    }
+
+
+# ─── Router Health Check ──────────────────────────────────────────────────────
+
+@router.get("/router-health", tags=["diagnostics"],
+            summary="Router health check",
+            description="Detects if your router needs a reboot based on performance degradation patterns.")
+def check_router_health(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Detects router issues and recommends reboot if needed."""
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_6h = datetime.utcnow() - timedelta(hours=6)
+    
+    rows_24h = _scope(db.query(SpeedMeasurement), client_id).filter(
+        SpeedMeasurement.timestamp >= cutoff_24h
+    ).order_by(SpeedMeasurement.timestamp).all()
+
+    if len(rows_24h) < 5:
+        return {"error": "Need at least 5 measurements in last 24h for analysis"}
+
+    # Calculate trends
+    recent_6h = [r for r in rows_24h if r.timestamp >= cutoff_6h]
+    older_18h = [r for r in rows_24h if r.timestamp < cutoff_6h]
+
+    if not recent_6h or not older_18h:
+        return {"needs_reboot": False, "confidence": 0, "reasons": [], "recommendation": "Not enough data"}
+
+    # Speed trend
+    avg_recent_speed = sum(r.download_speed for r in recent_6h) / len(recent_6h)
+    avg_older_speed = sum(r.download_speed for r in older_18h) / len(older_18h)
+    speed_change_pct = ((avg_recent_speed - avg_older_speed) / avg_older_speed) * 100 if avg_older_speed > 0 else 0
+
+    # Ping trend
+    avg_recent_ping = sum(r.ping for r in recent_6h) / len(recent_6h)
+    avg_older_ping = sum(r.ping for r in older_18h) / len(older_18h)
+    ping_change = avg_recent_ping - avg_older_ping
+
+    # Disconnections (outages)
+    disconnections = sum(1 for r in recent_6h if r.is_outage)
+
+    # Decision logic
+    reasons = []
+    confidence = 0
+
+    if speed_change_pct < -20:
+        reasons.append(f"Speed dropped {abs(speed_change_pct):.0f}% in last 6 hours")
+        confidence += 35
+    
+    if ping_change > 50:
+        reasons.append(f"Ping increased by {ping_change:.0f}ms")
+        confidence += 30
+    
+    if disconnections >= 3:
+        reasons.append(f"{disconnections} disconnections detected in last 6 hours")
+        confidence += 35
+
+    # Check for gradual degradation
+    if len(rows_24h) >= 10:
+        first_half = rows_24h[:len(rows_24h)//2]
+        second_half = rows_24h[len(rows_24h)//2:]
+        
+        avg_first = sum(r.download_speed for r in first_half) / len(first_half)
+        avg_second = sum(r.download_speed for r in second_half) / len(second_half)
+        
+        if avg_second < avg_first * 0.7:  # 30% drop
+            reasons.append("Gradual speed degradation detected over 24 hours")
+            confidence += 20
+
+    needs_reboot = confidence >= 50
+
+    # Estimate last reboot (very rough)
+    if rows_24h:
+        oldest = rows_24h[0].timestamp
+        days_ago = (datetime.utcnow() - oldest).days
+        last_reboot_estimate = f"{days_ago}+ days ago" if days_ago > 0 else "Less than 24h ago"
+    else:
+        last_reboot_estimate = "Unknown"
+
+    recommendation = (
+        "🔄 Reboot your router now to restore performance" if needs_reboot else
+        "✅ Router performance is stable, no reboot needed"
+    )
+
+    return {
+        "needs_reboot": needs_reboot,
+        "confidence": min(confidence, 100),
+        "reasons": reasons if reasons else ["No performance issues detected"],
+        "last_reboot_estimate": last_reboot_estimate,
+        "recommendation": recommendation,
+        "metrics": {
+            "speed_change_pct": round(speed_change_pct, 1),
+            "ping_change_ms": round(ping_change, 1),
+            "disconnections": disconnections,
+            "avg_recent_speed": round(avg_recent_speed, 1),
+            "avg_older_speed": round(avg_older_speed, 1),
+        },
+    }
+
+
+# ─── Activity Recommendations ─────────────────────────────────────────────────
+
+@router.get("/activity-recommendations", tags=["recommendations"],
+            summary="What can I do right now?",
+            description="Real-time activity recommendations based on current network conditions.")
+def get_activity_recommendations(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Recommends activities based on current speed and ping."""
+    latest = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .order_by(desc(SpeedMeasurement.timestamp))
+        .first()
+    )
+
+    if not latest:
+        return {"error": "No speed test data. Run a test first."}
+
+    speed = latest.download_speed
+    ping = latest.ping
+
+    activities = [
+        {"name": "8K Streaming", "icon": "🎬", "min_speed": 100, "max_ping": 150, "category": "streaming"},
+        {"name": "4K Netflix/YouTube", "icon": "📺", "min_speed": 25, "max_ping": 150, "category": "streaming"},
+        {"name": "HD Streaming (1080p)", "icon": "🎥", "min_speed": 5, "max_ping": 200, "category": "streaming"},
+        {"name": "HD Video Calls (10+ people)", "icon": "👥", "min_speed": 10, "max_ping": 200, "category": "video_calls"},
+        {"name": "HD Video Calls (1-5 people)", "icon": "💬", "min_speed": 3, "max_ping": 250, "category": "video_calls"},
+        {"name": "Competitive Gaming (FPS)", "icon": "🎮", "min_speed": 5, "max_ping": 50, "category": "gaming"},
+        {"name": "Casual Gaming", "icon": "🕹️", "min_speed": 3, "max_ping": 100, "category": "gaming"},
+        {"name": "Large File Downloads (10GB+)", "icon": "📥", "min_speed": 50, "max_ping": 500, "category": "downloads"},
+        {"name": "File Downloads (1-10GB)", "icon": "⬇️", "min_speed": 10, "max_ping": 500, "category": "downloads"},
+        {"name": "Music Streaming", "icon": "🎵", "min_speed": 0.5, "max_ping": 400, "category": "streaming"},
+        {"name": "Web Browsing", "icon": "🌐", "min_speed": 1, "max_ping": 300, "category": "browsing"},
+        {"name": "Social Media", "icon": "📱", "min_speed": 2, "max_ping": 300, "category": "browsing"},
+    ]
+
+    recommended = []
+    not_recommended = []
+
+    for activity in activities:
+        if speed >= activity["min_speed"] and ping <= activity["max_ping"]:
+            recommended.append(activity)
+        else:
+            reason_parts = []
+            if speed < activity["min_speed"]:
+                reason_parts.append(f"Need {activity['min_speed']} Mbps (you have {speed:.1f} Mbps)")
+            if ping > activity["max_ping"]:
+                reason_parts.append(f"Ping too high ({ping:.0f}ms, need <{activity['max_ping']}ms)")
+            
+            not_recommended.append({
+                **activity,
+                "reason": ", ".join(reason_parts)
+            })
+
+    # Group by category
+    from collections import defaultdict
+    by_category = defaultdict(list)
+    for act in recommended:
+        by_category[act["category"]].append(act)
+
+    return {
+        "current_speed": round(speed, 1),
+        "current_ping": round(ping, 1),
+        "recommended": recommended,
+        "not_recommended": not_recommended,
+        "by_category": dict(by_category),
+        "best_activity": recommended[0]["name"] if recommended else "Web browsing only",
+        "total_recommended": len(recommended),
+        "total_activities": len(activities),
+    }
+
+
+# ─── Is It Just Me? ───────────────────────────────────────────────────────────
+
+@router.get("/is-it-just-me", tags=["diagnostics"],
+            summary="Global outage checker",
+            description="Checks if other users with same ISP are experiencing issues, or if it's a global problem.")
+def check_if_global_outage(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Determines if outage is local, ISP-wide, or global."""
+    # Get user's current status
+    my_latest = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .order_by(desc(SpeedMeasurement.timestamp))
+        .first()
+    )
+
+    if not my_latest:
+        return {"error": "No speed test data. Run a test first."}
+
+    my_isp = my_latest.isp
+    my_status = "outage" if my_latest.is_outage else "ok"
+
+    # Check other users with same ISP (last 30 minutes)
+    cutoff = datetime.utcnow() - timedelta(minutes=30)
+    same_isp_measurements = (
+        db.query(SpeedMeasurement)
+        .filter(
+            SpeedMeasurement.isp == my_isp,
+            SpeedMeasurement.timestamp >= cutoff,
+            SpeedMeasurement.client_id != client_id  # Exclude self
+        )
+        .all()
+    )
+
+    outage_count = sum(1 for m in same_isp_measurements if m.is_outage)
+    total_users = len(set(m.client_id for m in same_isp_measurements if m.client_id))
+    total_measurements = len(same_isp_measurements)
+
+    is_widespread = (outage_count / total_measurements > 0.3) if total_measurements > 0 else False
+
+    # Check external services
+    import socket
+    def check_reachability(host, port=80):
+        try:
+            socket.create_connection((host, port), timeout=3)
+            return True
+        except:
+            return False
+
+    external_checks = {
+        "google": check_reachability("8.8.8.8", 53),
+        "cloudflare": check_reachability("1.1.1.1", 53),
+        "aws": check_reachability("aws.amazon.com", 443),
+    }
+
+    internet_down = not any(external_checks.values())
+
+    # Determine verdict
+    if internet_down:
+        verdict = "🌍 Global internet issue"
+        is_just_you = False
+    elif is_widespread:
+        verdict = "🏢 ISP-wide outage"
+        is_just_you = False
+    else:
+        verdict = "🏠 Issue with your connection"
+        is_just_you = True
+
+    # Recommendation
+    if internet_down:
+        recommendation = "Major internet backbone issue. Wait it out, nothing you can do."
+    elif is_widespread:
+        recommendation = f"Contact {my_isp} support. Many users are affected."
+    else:
+        recommendation = "Try rebooting your router or modem. Issue appears to be local."
+
+    return {
+        "is_just_you": is_just_you,
+        "verdict": verdict,
+        "my_status": my_status,
+        "isp": my_isp,
+        "affected_users": outage_count,
+        "total_users_checked": total_users,
+        "total_measurements": total_measurements,
+        "outage_percentage": round((outage_count / total_measurements) * 100, 1) if total_measurements > 0 else 0,
+        "external_services": external_checks,
+        "recommendation": recommendation,
+        "checked_at": datetime.utcnow().isoformat(),
+    }
+
+
+# ─── ML Predictions ───────────────────────────────────────────────────────────
+
+@router.get("/predictions/next-hour", tags=["predictions"],
+            summary="Predict next hour speed",
+            description="ML-based prediction of download/upload speed for the next hour based on historical patterns.")
+def predict_next_hour(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Predicts network speed for the next hour using historical patterns."""
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    
+    return NetworkPredictor.predict_next_hour_speed(measurements)
+
+
+@router.get("/predictions/outage-probability", tags=["predictions"],
+            summary="Outage probability forecast",
+            description="Calculates probability of outage in the next hour based on historical patterns and recent trends.")
+def predict_outage_probability(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Predicts probability of outage in the next hour."""
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    
+    return NetworkPredictor.predict_outage_probability(measurements)
+
+
+@router.get("/predictions/best-download-time", tags=["predictions"],
+            summary="Best time to download",
+            description="Finds the optimal time in the next 24 hours to download large files based on historical speed patterns.")
+def predict_best_download_time(
+    hours_ahead: int = Query(24, ge=1, le=72),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Finds the best time to download large files."""
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    
+    return NetworkPredictor.find_best_download_time(measurements, hours_ahead)
+
+
+@router.get("/predictions/congestion-24h", tags=["predictions"],
+            summary="24-hour congestion forecast",
+            description="Predicts network congestion levels for the next 24 hours based on historical patterns.")
+def predict_congestion_24h(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Predicts congestion for the next 24 hours."""
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    
+    return NetworkPredictor.predict_congestion_24h(measurements)
+
+
+# ─── Smart Alerts Configuration ──────────────────────────────────────────────
+
+from ..services.smart_alerts import SmartAlertService
+from ..models.measurement import AlertConfig, UserPreferences
+
+class AlertConfigCreate(BaseModel):
+    telegram_enabled: bool = False
+    telegram_chat_id: Optional[str] = None
+    discord_enabled: bool = False
+    discord_webhook_url: Optional[str] = None
+    sms_enabled: bool = False
+    phone_number: Optional[str] = None
+    min_download_speed: Optional[float] = None
+    max_ping: Optional[float] = None
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: Optional[str] = None  # HH:MM format
+    quiet_hours_end: Optional[str] = None
+
+
+@router.get("/alerts/config", tags=["alerts"],
+            summary="Get alert configuration")
+def get_alert_config(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    config = db.query(AlertConfig).filter(AlertConfig.client_id == client_id).first()
+    if not config:
+        return {"enabled": False, "message": "No alert configuration found"}
+    
+    return config
+
+
+@router.post("/alerts/config", tags=["alerts"],
+             summary="Configure smart alerts")
+def configure_alerts(
+    config_data: AlertConfigCreate,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    from datetime import time as dt_time
+    
+    config = db.query(AlertConfig).filter(AlertConfig.client_id == client_id).first()
+    if not config:
+        config = AlertConfig(client_id=client_id, enabled=True)
+        db.add(config)
+    
+    config.telegram_enabled = config_data.telegram_enabled
+    config.telegram_chat_id = config_data.telegram_chat_id
+    config.discord_enabled = config_data.discord_enabled
+    config.discord_webhook_url = config_data.discord_webhook_url
+    config.sms_enabled = config_data.sms_enabled
+    config.phone_number = config_data.phone_number
+    config.min_download_speed = config_data.min_download_speed
+    config.max_ping = config_data.max_ping
+    config.quiet_hours_enabled = config_data.quiet_hours_enabled
+    
+    if config_data.quiet_hours_start:
+        h, m = map(int, config_data.quiet_hours_start.split(":"))
+        config.quiet_hours_start = dt_time(h, m)
+    if config_data.quiet_hours_end:
+        h, m = map(int, config_data.quiet_hours_end.split(":"))
+        config.quiet_hours_end = dt_time(h, m)
+    
+    db.commit()
+    db.refresh(config)
+    return {"message": "Alert configuration saved", "config": config}
+
+
+@router.post("/alerts/test", tags=["alerts"],
+             summary="Test alert delivery")
+async def test_alert(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = SmartAlertService(db)
+    success = await service.send_alert(
+        client_id=client_id,
+        alert_type="test",
+        message="🧪 Test alert from Internet Stability Tracker",
+        severity="low"
+    )
+    
+    return {"success": success, "message": "Test alert sent" if success else "Alert delivery failed"}
+
+
+# ─── Advanced Diagnostics ────────────────────────────────────────────────────
+
+from ..services.advanced_diagnostics import AdvancedDiagnostics
+
+@router.get("/diagnostics/advanced", tags=["diagnostics"],
+            summary="Advanced network diagnostics")
+async def get_advanced_diagnostics():
+    diag = AdvancedDiagnostics()
+    return await diag.run_full_diagnostics()
+
+
+@router.get("/diagnostics/packet-loss", tags=["diagnostics"],
+            summary="Packet loss measurement")
+async def measure_packet_loss(host: str = Query("8.8.8.8"), count: int = Query(20, ge=10, le=50)):
+    diag = AdvancedDiagnostics()
+    return await diag.measure_packet_loss(host, count)
+
+
+@router.get("/diagnostics/jitter", tags=["diagnostics"],
+            summary="Jitter measurement")
+async def measure_jitter(host: str = Query("8.8.8.8"), samples: int = Query(30, ge=10, le=100)):
+    diag = AdvancedDiagnostics()
+    return await diag.measure_jitter(host, samples)
+
+
+@router.get("/diagnostics/bufferbloat", tags=["diagnostics"],
+            summary="Bufferbloat test")
+async def test_bufferbloat():
+    diag = AdvancedDiagnostics()
+    return await diag.test_bufferbloat()
+
+
+@router.get("/diagnostics/mtu", tags=["diagnostics"],
+            summary="MTU discovery")
+async def discover_mtu(host: str = Query("8.8.8.8")):
+    diag = AdvancedDiagnostics()
+    return await diag.discover_mtu(host)
+
+
+@router.get("/diagnostics/dns-leak", tags=["diagnostics"],
+            summary="DNS leak test")
+async def test_dns_leak():
+    diag = AdvancedDiagnostics()
+    return await diag.test_dns_leak()
+
+
+@router.get("/diagnostics/vpn-speed", tags=["diagnostics"],
+            summary="VPN speed comparison — measures baseline speed and estimates VPN overhead")
+async def compare_vpn_speed(vpn_interface: Optional[str] = Query(None, description="VPN network interface name (e.g. tun0, wg0)")):
+    diag = AdvancedDiagnostics()
+    return await diag.compare_vpn_speed(vpn_interface)
+
+
+# ─── AI Insights Enhanced ─────────────────────────────────────────────────────
+
+from ..services.ai_insights_enhanced import AIInsightsService
+
+@router.get("/insights/root-cause", tags=["insights"],
+            summary="Root cause analysis")
+def analyze_root_cause(
+    hours: int = Query(24, ge=1, le=168),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = AIInsightsService(db)
+    return service.analyze_root_cause(client_id, hours)
+
+
+@router.get("/insights/predictive-maintenance", tags=["insights"],
+            summary="Predictive maintenance")
+def predict_maintenance(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = AIInsightsService(db)
+    return service.predict_maintenance(client_id)
+
+
+@router.get("/insights/anomalies-advanced", tags=["insights"],
+            summary="Advanced anomaly detection")
+def detect_anomalies_advanced(
+    sensitivity: float = Query(2.0, ge=1.0, le=3.0),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = AIInsightsService(db)
+    return service.detect_anomalies_advanced(client_id, sensitivity)
+
+
+@router.get("/insights/query", tags=["insights"],
+            summary="Natural language query")
+def answer_query(
+    q: str = Query(..., description="Natural language question"),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = AIInsightsService(db)
+    return service.answer_natural_query(client_id, q)
+
+
+# ─── Network Security ─────────────────────────────────────────────────────────
+
+from ..services.network_security import NetworkSecurityService
+
+@router.get("/security/audit", tags=["security"],
+            summary="Security audit")
+async def run_security_audit(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = NetworkSecurityService(db)
+    return await service.run_security_audit(client_id)
+
+
+@router.get("/security/port-scan", tags=["security"],
+            summary="Port scan")
+async def scan_ports(target: str = Query("127.0.0.1")):
+    service = NetworkSecurityService(None)
+    return await service.scan_common_ports(target)
+
+
+@router.get("/security/privacy-score", tags=["security"],
+            summary="Privacy score")
+async def get_privacy_score():
+    service = NetworkSecurityService(None)
+    return await service.calculate_privacy_score()
+
+
+@router.get("/security/vpn-recommendation", tags=["security"],
+            summary="VPN recommendation")
+async def recommend_vpn():
+    service = NetworkSecurityService(None)
+    return await service.recommend_vpn()
+
+
+# ─── Historical Visualization ─────────────────────────────────────────────────
+
+from ..services.historical_visualization import HistoricalVisualizationService
+
+@router.get("/history/heatmap-calendar", tags=["history"],
+            summary="Heatmap calendar")
+def get_heatmap_calendar(
+    days: int = Query(90, ge=7, le=365),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = HistoricalVisualizationService(db)
+    return service.get_heatmap_calendar(client_id, days)
+
+
+@router.get("/history/distribution", tags=["history"],
+            summary="Speed distribution histogram")
+def get_speed_distribution(
+    bins: int = Query(20, ge=5, le=50),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = HistoricalVisualizationService(db)
+    return service.get_speed_distribution(client_id, bins)
+
+
+@router.get("/history/percentiles", tags=["history"],
+            summary="Percentile charts")
+def get_percentile_charts(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = HistoricalVisualizationService(db)
+    return service.get_percentile_charts(client_id)
+
+
+@router.get("/history/correlation", tags=["history"],
+            summary="Correlation analysis")
+def get_correlation_analysis(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = HistoricalVisualizationService(db)
+    return service.get_correlation_analysis(client_id)
+
+
+@router.get("/history/interactive-timeline", tags=["history"],
+            summary="Interactive timeline")
+def get_interactive_timeline(
+    hours: int = Query(168, ge=1, le=720),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    service = HistoricalVisualizationService(db)
+    return service.get_interactive_timeline(client_id, hours)
+
+
+# ─── User Preferences ─────────────────────────────────────────────────────────
+
+class PreferencesUpdate(BaseModel):
+    theme: Optional[str] = None
+    custom_theme: Optional[dict] = None
+    dashboard_layout: Optional[dict] = None
+    favorite_metrics: Optional[list] = None
+    chart_preferences: Optional[dict] = None
+
+
+@router.get("/preferences", tags=["preferences"],
+            summary="Get user preferences")
+def get_preferences(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    prefs = db.query(UserPreferences).filter(UserPreferences.client_id == client_id).first()
+    if not prefs:
+        return {"theme": "dark", "message": "No preferences found"}
+    
+    return prefs
+
+
+@router.post("/preferences", tags=["preferences"],
+             summary="Update user preferences")
+def update_preferences(
+    prefs_data: PreferencesUpdate,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    prefs = db.query(UserPreferences).filter(UserPreferences.client_id == client_id).first()
+    if not prefs:
+        prefs = UserPreferences(client_id=client_id)
+        db.add(prefs)
+    
+    if prefs_data.theme:
+        prefs.theme = prefs_data.theme
+    if prefs_data.custom_theme:
+        prefs.custom_theme = prefs_data.custom_theme
+    if prefs_data.dashboard_layout:
+        prefs.dashboard_layout = prefs_data.dashboard_layout
+    if prefs_data.favorite_metrics:
+        prefs.favorite_metrics = prefs_data.favorite_metrics
+    if prefs_data.chart_preferences:
+        prefs.chart_preferences = prefs_data.chart_preferences
+    
+    db.commit()
+    db.refresh(prefs)
+    return {"message": "Preferences updated", "preferences": prefs}

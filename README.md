@@ -194,6 +194,15 @@ Opens http://localhost — nginx serves the React app and proxies `/api` to Fast
 
 ---
 
+## 📚 Documentation
+
+- **[CI/CD Guide](CI-CD-GUIDE.md)** — Complete deployment documentation
+- **[Quick Reference](QUICK-REFERENCE.md)** — One-line commands cheat sheet
+- **[CI/CD Fixes](CI-CD-FIXES.md)** — Recent fixes and changes
+- **[Cool Features](COOL-FEATURES.md)** — 🔥 NEW: Gaming Mode, Video Calls, Router Health, and more!
+
+---
+
 ## Deployment
 
 ### Backend — Fly.io

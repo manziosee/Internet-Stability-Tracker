@@ -28,9 +28,9 @@ LABEL org.opencontainers.image.title="Internet Stability Tracker" \
       org.opencontainers.image.source="https://github.com/manziosee/Internet-Stability-Tracker" \
       org.opencontainers.image.licenses="MIT"
 
-# Patch base-image CVEs and add curl for healthcheck
+# Patch base-image CVEs and add curl for healthcheck + traceroute for network diagnostics
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
- && apt-get install -y --no-install-recommends curl \
+ && apt-get install -y --no-install-recommends curl traceroute iputils-ping \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

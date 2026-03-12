@@ -1,5 +1,6 @@
 # ── Deploy to Fly.io ──────────────────────────────────────────────────────────
-# Triggered on every push to main.
+# DISABLED: Manual deployment only via `fly deploy` command
+# To re-enable: uncomment the 'on:' section below
 #
 # Required GitHub Actions secret:  FLY_API_TOKEN
 #   1. Generate:  fly tokens create deploy -x 999999h
@@ -8,10 +9,14 @@
 
 name: Deploy to Fly.io
 
+# Deployment triggers DISABLED - uncomment to re-enable
+# on:
+#   push:
+#     branches: ["main"]
+#   workflow_dispatch:     # allow manual re-deploy from the Actions tab
+
 on:
-  push:
-    branches: ["main"]
-  workflow_dispatch:     # allow manual re-deploy from the Actions tab
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   deploy:
