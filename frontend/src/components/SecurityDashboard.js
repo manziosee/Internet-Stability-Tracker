@@ -101,7 +101,21 @@ const SecurityDashboard = () => {
   if (loading && !auditData) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Box>
+            <Typography variant="h4" gutterBottom>
+              <ShieldIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+              Network Security Dashboard
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Comprehensive security audit of your network
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<CircularProgress size={20} />} disabled>
+            Scanning...
+          </Button>
+        </Box>
+        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="40vh">
           <CircularProgress size={60} />
           <Typography variant="h6" sx={{ mt: 2 }}>
             Running Security Audit...
@@ -156,7 +170,7 @@ const SecurityDashboard = () => {
         {auditData && (
           <Grid container spacing={3}>
             {/* Privacy Score Card */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Box display="flex" alignItems="center" mb={2}>
@@ -244,7 +258,7 @@ const SecurityDashboard = () => {
             </Grid>
 
             {/* Port Scan Results */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Box display="flex" alignItems="center" mb={2}>
@@ -339,7 +353,7 @@ const SecurityDashboard = () => {
             </Grid>
 
             {/* Intrusion Detection */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Box display="flex" alignItems="center" mb={2}>
@@ -422,7 +436,7 @@ const SecurityDashboard = () => {
             </Grid>
 
             {/* VPN Recommendations */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Box display="flex" alignItems="center" mb={2}>
@@ -519,7 +533,7 @@ const SecurityDashboard = () => {
             </Grid>
 
             {/* Overall Security Summary */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Paper sx={{ p: 3 }}>
                 <Typography variant="h6" gutterBottom>
                   <SecurityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
@@ -528,7 +542,7 @@ const SecurityDashboard = () => {
                 <Divider sx={{ mb: 2 }} />
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <Box textAlign="center">
                       <Typography variant="h4" color="primary">
                         {auditData.privacy_score?.privacy_score || 0}
@@ -538,7 +552,7 @@ const SecurityDashboard = () => {
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <Box textAlign="center">
                       <Typography variant="h4" color={auditData.port_scan?.total_vulnerable > 0 ? 'error' : 'success'}>
                         {auditData.port_scan?.total_vulnerable || 0}
@@ -548,7 +562,7 @@ const SecurityDashboard = () => {
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <Box textAlign="center">
                       <Typography variant="h4" color={auditData.intrusion_detection?.intrusions_detected > 0 ? 'error' : 'success'}>
                         {auditData.intrusion_detection?.intrusions_detected || 0}
@@ -558,7 +572,7 @@ const SecurityDashboard = () => {
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <Box textAlign="center">
                       <Typography variant="h4" color={auditData.vpn_recommendation?.should_use_vpn ? 'warning' : 'success'}>
                         {auditData.vpn_recommendation?.should_use_vpn ? 'YES' : 'NO'}

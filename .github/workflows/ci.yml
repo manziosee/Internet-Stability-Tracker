@@ -75,7 +75,8 @@ jobs:
         working-directory: frontend
         env:
           REACT_APP_API_URL: "https://backend-cold-butterfly-9535.fly.dev/api"
-          CI: "false"   # treat warnings as warnings, not errors
+          CI: "false"           # treat warnings as warnings, not errors
+          DISABLE_ESLINT_PLUGIN: "true"   # speed up CI build, lint runs separately
         run: npm run build
 
       - name: Upload build artifact

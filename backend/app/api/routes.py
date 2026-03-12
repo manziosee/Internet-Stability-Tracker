@@ -1130,34 +1130,94 @@ def reject_report(report_id: int, db: Session = Depends(get_db)):
             summary="My connection info", description="Returns the caller's public IP address, detected ISP, country, city, and ASN via IP geolocation. Also includes the last speed test result for this session.")
 def get_my_connection(request: Request, db: Session = Depends(get_db)):
     import httpx
-
-    # ── Resolve client IP (works behind Fly.io proxy) ────────────────────────
     import re
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    client_ip = forwarded.split(",")[0].strip() if forwarded else (
-        request.client.host if request.client else "unknown"
-    )
-    # Basic validation: only allow valid IPv4 / IPv6 characters to prevent injection
-    if not re.match(r'^[0-9a-fA-F.:]{2,45}$', client_ip):
-        client_ip = "unknown"
 
-    # ── IP geolocation via ip-api.com (free tier — HTTP only, server-side call) ─
-    # Note: ip-api.com free tier does not support HTTPS; this is a server-to-server
-    # lookup. The frontend calls ip-api.com directly from the browser for display.
+    PRIVATE_PREFIXES = ("127.", "10.", "192.168.", "::1", "::ffff:127.", "localhost")
+
+    def _is_private(ip: str) -> bool:
+        return ip in ("unknown", "") or any(ip.startswith(p) for p in PRIVATE_PREFIXES)
+
+    def _clean_ip(raw: str) -> str:
+        """Extract first valid public IP from a comma-separated Forwarded header."""
+        for candidate in raw.split(","):
+            ip = candidate.strip()
+            # Unwrap IPv6-mapped IPv4  (::ffff:1.2.3.4)
+            if ip.lower().startswith("::ffff:"):
+                ip = ip[7:]
+            if re.match(r'^[0-9a-fA-F.:]{2,45}$', ip) and not _is_private(ip):
+                return ip
+        return ""
+
+    # ── Resolve real client IP — check all common proxy headers ──────────────
+    client_ip = ""
+    for header in ("Fly-Client-IP", "CF-Connecting-IP", "X-Real-IP", "X-Forwarded-For"):
+        val = request.headers.get(header, "")
+        if val:
+            candidate = _clean_ip(val)
+            if candidate:
+                client_ip = candidate
+                break
+
+    # Final fallback: direct connection IP
+    if not client_ip:
+        direct = request.client.host if request.client else ""
+        client_ip = direct if not _is_private(direct) else ""
+
+    # ── IP geolocation — try ip-api.com first, ipapi.co as fallback ──────────
     geo: dict = {}
-    if client_ip not in ("unknown", "127.0.0.1", "::1"):
+    if client_ip:
+        # Provider 1: ip-api.com (HTTP, free, fast)
         try:
             r = httpx.get(
                 f"http://ip-api.com/json/{client_ip}",
-                params={"fields": "status,country,countryCode,regionName,city,isp,org,as,query"},
+                params={"fields": "status,country,countryCode,regionName,city,isp,org,as,query,lat,lon"},
                 timeout=5,
             )
             if r.status_code == 200:
-                geo = r.json()
+                data = r.json()
+                if data.get("status") == "success":
+                    geo = {
+                        "query":       data.get("query", client_ip),
+                        "country":     data.get("country"),
+                        "countryCode": data.get("countryCode"),
+                        "regionName":  data.get("regionName"),
+                        "city":        data.get("city"),
+                        "isp":         data.get("isp"),
+                        "org":         data.get("org"),
+                        "as":          data.get("as"),
+                        "lat":         data.get("lat"),
+                        "lon":         data.get("lon"),
+                    }
         except Exception:
             pass
 
-    # ── Last speed test from DB ───────────────────────────────────────────────
+        # Provider 2 fallback: ipapi.co (HTTPS, no API key needed)
+        if not geo:
+            try:
+                r2 = httpx.get(
+                    f"https://ipapi.co/{client_ip}/json/",
+                    headers={"User-Agent": "curl/7.68.0"},
+                    timeout=5,
+                )
+                if r2.status_code == 200:
+                    d2 = r2.json()
+                    if not d2.get("error"):
+                        geo = {
+                            "query":       d2.get("ip", client_ip),
+                            "country":     d2.get("country_name"),
+                            "countryCode": d2.get("country_code"),
+                            "regionName":  d2.get("region"),
+                            "city":        d2.get("city"),
+                            "isp":         d2.get("org"),
+                            "org":         d2.get("org"),
+                            "as":          d2.get("asn"),
+                            "lat":         d2.get("latitude"),
+                            "lon":         d2.get("longitude"),
+                        }
+            except Exception:
+                pass
+
+    # ── Last speed test from DB (scoped to this client if available) ──────────
     last = (
         db.query(SpeedMeasurement)
         .order_by(SpeedMeasurement.timestamp.desc())
@@ -1165,14 +1225,16 @@ def get_my_connection(request: Request, db: Session = Depends(get_db)):
     )
 
     return {
-        "public_ip":          geo.get("query") or client_ip,
-        "isp":                geo.get("isp") or (last.isp if last else "Unknown"),
+        "public_ip":          geo.get("query") or client_ip or "Unknown",
+        "isp":                geo.get("isp") or (last.isp if last else None),
         "org":                geo.get("org"),
         "asn":                geo.get("as"),
         "country":            geo.get("country"),
         "country_code":       geo.get("countryCode"),
         "region":             geo.get("regionName"),
         "city":               geo.get("city"),
+        "lat":                geo.get("lat"),
+        "lon":                geo.get("lon"),
         "last_measured_isp":  last.isp if last else None,
         "last_download_mbps": round(last.download_speed, 2) if last else None,
         "last_upload_mbps":   round(last.upload_speed, 2) if last else None,
