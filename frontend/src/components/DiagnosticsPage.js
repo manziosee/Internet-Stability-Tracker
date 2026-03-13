@@ -71,13 +71,24 @@ export default function DiagnosticsPage() {
   const [connInfo, setConnInfo] = useState(null);
   const [connLoading, setConnLoading] = useState(true);
 
-  // Auto-load connection info on mount
-  // Backend /my-connection does the geo lookup server-side (avoids browser HTTP mixed-content)
+  // Auto-load connection info on mount.
+  // OS is detected client-side immediately so it always shows.
+  // IP/geo come from backend /my-connection (avoids browser HTTP mixed-content blocks).
   useEffect(() => {
+    // Show OS immediately — no need to wait for backend
+    setConnInfo({
+      device_os: detectOS(),
+      public_ip: null, isp: null, org: null, asn: null,
+      country: null, country_code: null, region: null, city: null,
+      lat: null, lon: null,
+      last_measured_isp: null, last_download_mbps: null,
+      last_upload_mbps: null, last_ping_ms: null, last_test_at: null,
+    });
     setConnLoading(true);
     getMyConnection().then((res) => {
       const d = res.data || {};
-      setConnInfo({
+      setConnInfo((prev) => ({
+        ...prev,
         public_ip:           d.public_ip    || null,
         isp:                 d.isp          || null,
         org:                 d.org          || null,
@@ -88,14 +99,16 @@ export default function DiagnosticsPage() {
         city:                d.city         || null,
         lat:                 d.lat          || null,
         lon:                 d.lon          || null,
-        device_os:           detectOS(),
         last_measured_isp:   d.last_measured_isp  || null,
         last_download_mbps:  d.last_download_mbps || null,
         last_upload_mbps:    d.last_upload_mbps   || null,
         last_ping_ms:        d.last_ping_ms        || null,
         last_test_at:        d.last_test_at        || null,
-      });
-    }).catch(() => {}).finally(() => setConnLoading(false));
+      }));
+    }).catch(() => {
+      // Backend unreachable — keep OS shown, show warning for geo fields
+      setConnInfo((prev) => ({ ...prev, _geo_error: true }));
+    }).finally(() => setConnLoading(false));
   }, []);
 
   const runDiagnostics = async () => {
@@ -165,42 +178,58 @@ export default function DiagnosticsPage() {
             {connLoading && <CircularProgress size={14} sx={{ color: '#f0c24b', ml: 'auto' }} />}
           </Box>
 
-          {connLoading ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {[1, 2, 3, 4].map((i) => <Skeleton key={i} variant="text" height={28} sx={{ borderRadius: 1 }} />)}
-            </Box>
-          ) : connInfo ? (
+          {connInfo ? (
             <Grid container spacing={3}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoRow icon={PublicIcon}   label="Public IP"  value={connInfo.public_ip} mono />
-                <InfoRow icon={BusinessIcon} label="ISP"        value={connInfo.isp} />
-                <InfoRow icon={BusinessIcon} label="Org / ASN"  value={connInfo.org || connInfo.asn} />
+                {/* OS is always available immediately from browser */}
                 <InfoRow icon={DevicesIcon}  label="Device OS"  value={connInfo.device_os} />
+                {connLoading
+                  ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>{[1,2,3].map((i) => <Skeleton key={i} variant="text" height={24} sx={{ borderRadius: 1 }} />)}</Box>
+                  : <>
+                      <InfoRow icon={PublicIcon}   label="Public IP"  value={connInfo.public_ip} mono />
+                      <InfoRow icon={BusinessIcon} label="ISP"        value={connInfo.isp} />
+                      <InfoRow icon={BusinessIcon} label="Org / ASN"  value={connInfo.org || connInfo.asn} />
+                    </>
+                }
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoRow icon={LocationOnIcon} label="Country"
-                  value={connInfo.country
-                    ? `${connInfo.country}${connInfo.country_code ? ` (${connInfo.country_code})` : ''}`
-                    : null} />
-                <InfoRow icon={LocationOnIcon} label="Region" value={connInfo.region} />
-                <InfoRow icon={LocationOnIcon} label="City"   value={connInfo.city} />
-                {connInfo.lat != null && connInfo.lon != null && (
-                  <InfoRow icon={LocationOnIcon} label="Coordinates"
-                    value={`${Number(connInfo.lat).toFixed(4)}, ${Number(connInfo.lon).toFixed(4)}`} mono />
-                )}
+                {connLoading
+                  ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>{[1,2,3,4].map((i) => <Skeleton key={i} variant="text" height={24} sx={{ borderRadius: 1 }} />)}</Box>
+                  : <>
+                      <InfoRow icon={LocationOnIcon} label="Country"
+                        value={connInfo.country
+                          ? `${connInfo.country}${connInfo.country_code ? ` (${connInfo.country_code})` : ''}`
+                          : null} />
+                      <InfoRow icon={LocationOnIcon} label="Region" value={connInfo.region} />
+                      <InfoRow icon={LocationOnIcon} label="City"   value={connInfo.city} />
+                      {connInfo.lat != null && connInfo.lon != null && (
+                        <InfoRow icon={LocationOnIcon} label="Coordinates"
+                          value={`${Number(connInfo.lat).toFixed(4)}, ${Number(connInfo.lon).toFixed(4)}`} mono />
+                      )}
+                    </>
+                }
               </Grid>
 
               {/* Geo fallback notice */}
-              {!connInfo.country && connInfo.public_ip && connInfo.public_ip !== 'Unknown' && (
+              {!connLoading && !connInfo.country && connInfo.public_ip && connInfo.public_ip !== 'Unknown' && (
                 <Grid size={{ xs: 12 }}>
                   <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
-                    IP detected ({connInfo.public_ip}) but geo lookup is temporarily unavailable. Location info will appear shortly.
+                    IP detected ({connInfo.public_ip}) but geo lookup is temporarily unavailable.
+                  </Alert>
+                </Grid>
+              )}
+
+              {/* Backend unreachable */}
+              {!connLoading && connInfo._geo_error && (
+                <Grid size={{ xs: 12 }}>
+                  <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+                    Could not reach the backend to fetch IP / location info.
                   </Alert>
                 </Grid>
               )}
 
               {/* Last speed test row */}
-              {connInfo.last_download_mbps != null && (
+              {!connLoading && connInfo.last_download_mbps != null && (
                 <Grid size={{ xs: 12 }}>
                   <Box sx={{ mt: 0.5, pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -224,7 +253,7 @@ export default function DiagnosticsPage() {
               )}
 
               {/* No speed test yet */}
-              {connInfo.last_download_mbps == null && (
+              {!connLoading && connInfo.last_download_mbps == null && !connInfo._geo_error && (
                 <Grid size={{ xs: 12 }}>
                   <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
                     No speed test recorded yet. Run a speed test from the Dashboard to see your latest results here.
@@ -232,11 +261,7 @@ export default function DiagnosticsPage() {
                 </Grid>
               )}
             </Grid>
-          ) : (
-            <Alert severity="warning" sx={{ fontSize: '0.85rem' }}>
-              Could not reach the connection info endpoint. Check that the backend is running.
-            </Alert>
-          )}
+          ) : null}
         </Paper>
       </motion.div>
 
@@ -349,8 +374,8 @@ export default function DiagnosticsPage() {
         </motion.div>
       )}
 
-      {/* Initial state — show after conn info loads */}
-      {!loading && !result && !error && !connLoading && (
+      {/* Initial state — show once diagnostics haven't been run yet */}
+      {!loading && !result && !error && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <Paper sx={{ p: 5, textAlign: 'center', background: isDark ? '#080808' : '#fff', border: '1px solid rgba(240,194,75,0.18)' }}>
             <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 2, repeat: Infinity }}>
