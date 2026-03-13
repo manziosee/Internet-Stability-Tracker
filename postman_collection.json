@@ -24,6 +24,12 @@
       "value": "1",
       "type": "string",
       "description": "ID of a community report — update after creating one"
+    },
+    {
+      "key": "webhook_id",
+      "value": "1",
+      "type": "string",
+      "description": "ID of a registered webhook — update after calling POST /webhooks"
     }
   ],
   "item": [
@@ -607,14 +613,76 @@
           }
         },
         {
-          "name": "Alert history",
+          "name": "Alert log",
           "request": {
             "method": "GET",
             "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
             "url": {
-              "raw": "{{base_url}}/alerts/history?limit=20",
-              "query": [{ "key": "limit", "value": "20" }]
-            }
+              "raw": "{{base_url}}/alerts/log?limit=50",
+              "query": [{ "key": "limit", "value": "50" }]
+            },
+            "description": "Returns last N alert delivery records for this device (success/failure, channel, severity)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "List webhooks",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/webhooks" },
+            "description": "Returns all active webhooks registered for this device (max 5)."
+          }
+        },
+        {
+          "name": "Register webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-ID", "value": "{{client_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-service.com/webhook\",\n  \"secret\": \"optional-signing-secret\",\n  \"events\": [\"outage\", \"speed_drop\", \"recovery\"]\n}"
+            },
+            "url": { "raw": "{{base_url}}/webhooks" },
+            "description": "Register a URL to receive JSON payloads on outage, speed_drop, and recovery events. Max 5 webhooks per device."
+          }
+        },
+        {
+          "name": "Delete webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/webhooks/{{webhook_id}}" },
+            "description": "Permanently removes a webhook. Only the owning device can delete it."
+          }
+        },
+        {
+          "name": "Test webhook",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/webhooks/test/{{webhook_id}}" },
+            "description": "Sends a test payload to the webhook URL and returns HTTP status code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoring",
+      "item": [
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/metrics" },
+            "description": "Returns plain-text Prometheus metrics: total measurements, outages, reports, 24h avg download/upload/ping. Scrape with Grafana or any Prometheus-compatible stack."
           }
         }
       ]

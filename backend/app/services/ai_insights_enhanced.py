@@ -285,10 +285,12 @@ class AIInsightsService:
         return patterns
     
     def answer_natural_query(self, client_id: str, query: str) -> Dict[str, Any]:
-        """Answer natural language queries about network performance using real DB data"""
+        """Answer natural language queries about network performance using real DB data.
+        Every code path MUST return a dict with an 'answer' key so the frontend chatbot
+        always has something to display."""
         query_lower = query.lower()
 
-        # Load last 168 hours of measurements for this client
+        # ── Load last 168 hours of measurements for this client ───────────────
         cutoff = datetime.utcnow() - timedelta(hours=168)
         measurements = self.db.query(Measurement).filter(
             and_(
@@ -299,122 +301,272 @@ class AIInsightsService:
 
         if not measurements:
             return {
-                "answer": "No measurement data found for your session in the past week. Run a speed test first so I can analyze your connection.",
+                "answer": (
+                    "I don't have any measurement data for your session yet. "
+                    "Run a speed test first so I can analyze your connection and answer your questions."
+                ),
                 "suggestions": [
-                    "Run a speed test to get started",
                     "Why is my speed slow?",
                     "When is the best time to download?",
+                    "How many outages did I have?",
+                    "What is my average ping?",
                 ]
             }
 
-        # Compute stats from real data
-        speeds    = [m.download_speed for m in measurements if m.download_speed is not None]
-        uploads   = [m.upload_speed   for m in measurements if m.upload_speed   is not None]
-        pings     = [m.ping           for m in measurements if m.ping           is not None]
-        outages   = [m for m in measurements if m.is_outage]
+        # ── Compute live stats from real DB data ──────────────────────────────
+        speeds  = [m.download_speed for m in measurements if m.download_speed is not None]
+        uploads = [m.upload_speed   for m in measurements if m.upload_speed   is not None]
+        pings   = [m.ping           for m in measurements if m.ping           is not None]
+        outages = [m for m in measurements if m.is_outage]
 
-        avg_download   = round(statistics.mean(speeds),  2) if speeds   else 0
-        avg_upload     = round(statistics.mean(uploads), 2) if uploads  else 0
-        avg_ping       = round(statistics.mean(pings),   2) if pings    else 0
-        outage_count   = len(outages)
-        total_tests    = len(measurements)
+        avg_download = round(statistics.mean(speeds),  2) if speeds  else 0
+        avg_upload   = round(statistics.mean(uploads), 2) if uploads else 0
+        avg_ping     = round(statistics.mean(pings),   2) if pings   else 0
+        max_download = round(max(speeds),  2) if speeds  else 0
+        min_download = round(min(speeds),  2) if speeds  else 0
+        outage_count = len(outages)
+        total_tests  = len(measurements)
 
-        # Hourly averages for best/worst hour
-        hourly = {}
+        # Hourly breakdown for best/worst hours
+        hourly: Dict[int, list] = {}
         for m in measurements:
             if m.download_speed is not None:
-                h = m.timestamp.hour
-                hourly.setdefault(h, []).append(m.download_speed)
+                hourly.setdefault(m.timestamp.hour, []).append(m.download_speed)
         hourly_avgs = {h: statistics.mean(v) for h, v in hourly.items()} if hourly else {}
         best_hour  = max(hourly_avgs, key=hourly_avgs.get) if hourly_avgs else None
         worst_hour = min(hourly_avgs, key=hourly_avgs.get) if hourly_avgs else None
+        best_str   = f"{best_hour:02d}:00"  if best_hour  is not None else "N/A"
+        worst_str  = f"{worst_hour:02d}:00" if worst_hour is not None else "N/A"
 
-        # Keyword routing
-        if "yesterday" in query_lower or "last 24" in query_lower:
-            return self._analyze_period(client_id, hours=24, period_name="the past 24 hours")
+        # Ping quality label
+        ping_quality = (
+            "excellent" if avg_ping < 20 else
+            "good"      if avg_ping < 50 else
+            "fair"      if avg_ping < 100 else "poor"
+        )
 
-        if "last week" in query_lower or "past week" in query_lower or "week" in query_lower:
-            best_str  = f"{best_hour:02d}:00" if best_hour  is not None else "N/A"
-            worst_str = f"{worst_hour:02d}:00" if worst_hour is not None else "N/A"
-            return {
-                "answer": (
-                    f"Over the past week I analyzed {total_tests} tests. "
-                    f"Your average download was {avg_download} Mbps, upload {avg_upload} Mbps, "
-                    f"ping {avg_ping} ms. "
-                    f"Best hour: {best_str}, worst hour: {worst_str}. "
-                    f"Outages detected: {outage_count}."
-                ),
-                "avg_download_mbps": avg_download,
-                "avg_upload_mbps":   avg_upload,
-                "avg_ping_ms":       avg_ping,
-                "outage_count":      outage_count,
-                "total_tests":       total_tests,
-                "best_hour":         best_hour,
-                "worst_hour":        worst_hour,
-            }
-
-        if "slow" in query_lower or "bad" in query_lower or "why" in query_lower or "issue" in query_lower:
-            result = self.analyze_root_cause(client_id, hours=48)
-            # Enrich with real stats summary
-            result["data_summary"] = {
-                "avg_download_mbps": avg_download,
-                "avg_ping_ms":       avg_ping,
-                "outage_count":      outage_count,
-                "total_tests":       total_tests,
-            }
-            return result
-
-        if "best time" in query_lower or "when to download" in query_lower or "download" in query_lower:
-            return self._find_best_times(client_id)
-
-        if "outage" in query_lower or "down" in query_lower or "offline" in query_lower:
-            return {
-                "answer": (
-                    f"In the past week, {outage_count} outage events were detected out of {total_tests} tests. "
-                    + (
-                        f"The worst period was around {worst_hour:02d}:00."
-                        if worst_hour is not None else ""
-                    )
-                ),
-                "outage_count": outage_count,
-                "total_tests":  total_tests,
-                "worst_hour":   worst_hour,
-            }
-
-        if "ping" in query_lower or "latency" in query_lower or "lag" in query_lower:
-            quality = "excellent" if avg_ping < 20 else "good" if avg_ping < 50 else "fair" if avg_ping < 100 else "poor"
-            return {
-                "answer": f"Your average ping over the past week is {avg_ping} ms ({quality}). Based on {total_tests} measurements.",
-                "avg_ping_ms": avg_ping,
-                "quality":     quality,
-                "total_tests": total_tests,
-            }
-
-        if "average" in query_lower or "typical" in query_lower or "speed" in query_lower:
-            return self._get_averages(client_id)
-
-        # Default: give a general summary with real data
-        best_str  = f"{best_hour:02d}:00" if best_hour  is not None else "N/A"
-        worst_str = f"{worst_hour:02d}:00" if worst_hour is not None else "N/A"
-        return {
-            "answer": (
-                f"Here's your network summary for the past week ({total_tests} tests): "
-                f"avg download {avg_download} Mbps, upload {avg_upload} Mbps, ping {avg_ping} ms. "
-                f"Best performance at {best_str}, slowest at {worst_str}. "
-                f"Outages: {outage_count}. "
-                "Ask me about specific periods, speeds, ping, outages, or the best time to download."
-            ),
+        # ── Base context for all responses ────────────────────────────────────
+        base = {
             "avg_download_mbps": avg_download,
             "avg_upload_mbps":   avg_upload,
             "avg_ping_ms":       avg_ping,
             "outage_count":      outage_count,
             "total_tests":       total_tests,
-            "suggestions": [
-                "Why is my speed slow?",
-                "What was my average speed last week?",
-                "When is the best time to download?",
-                "How many outages did I have?",
-            ]
+            "best_hour":         best_hour,
+            "worst_hour":        worst_hour,
+        }
+
+        suggestions = [
+            "Why is my speed slow?",
+            "When is the best time to download?",
+            "How many outages did I have this week?",
+            "What is my average ping latency?",
+            "Is my connection good for gaming?",
+            "Show me last week's summary",
+        ]
+
+        # ── Keyword routing ───────────────────────────────────────────────────
+
+        # Yesterday / last 24 hours
+        if any(k in query_lower for k in ("yesterday", "last 24", "24 hour", "today")):
+            result = self._analyze_period(client_id, hours=24, period_name="the past 24 hours")
+            result.setdefault("answer", f"In the past 24 hours: avg download {avg_download} Mbps, ping {avg_ping} ms.")
+            return {**base, **result, "suggestions": suggestions}
+
+        # Last week
+        if any(k in query_lower for k in ("last week", "past week", "weekly", "7 day")):
+            return {
+                **base,
+                "answer": (
+                    f"Last week summary ({total_tests} tests): "
+                    f"avg download {avg_download} Mbps, upload {avg_upload} Mbps, ping {avg_ping} ms. "
+                    f"Peak performance at {best_str}, slowest at {worst_str}. "
+                    f"Outages: {outage_count}."
+                ),
+                "suggestions": suggestions,
+            }
+
+        # Why slow / issues / bad connection
+        if any(k in query_lower for k in ("slow", "bad", "why", "issue", "problem", "degrad", "worse")):
+            result = self.analyze_root_cause(client_id, hours=48)
+            if "error" in result:
+                answer = (
+                    f"Based on {total_tests} measurements: your avg download is {avg_download} Mbps "
+                    f"with {avg_ping} ms ping. Need more data for detailed root cause analysis."
+                )
+            else:
+                primary = result.get("primary_cause", "No specific issues found")
+                causes = result.get("root_causes", [])
+                extra = ""
+                if len(causes) > 1:
+                    extras = [c["cause"] for c in causes[1:3]]
+                    extra = f" Also contributing: {'; '.join(extras)}."
+                answer = (
+                    f"Root cause analysis ({result.get('measurements_analyzed', total_tests)} measurements): "
+                    f"{primary}.{extra} "
+                    f"Your avg download is {avg_download} Mbps with {avg_ping} ms ping."
+                )
+            result["answer"] = answer
+            result["data_summary"] = base
+            return {**base, **result, "suggestions": suggestions}
+
+        # Best time to download / schedule
+        if any(k in query_lower for k in ("best time", "when to download", "schedule", "when should", "optimal time")):
+            result = self._find_best_times(client_id)
+            result.setdefault(
+                "answer",
+                f"Best time to download is around {best_str} based on your history. "
+                f"Avoid {worst_str} (historically your slowest hour)."
+            )
+            return {**base, **result, "suggestions": suggestions}
+
+        # Outage / downtime
+        if any(k in query_lower for k in ("outage", "down", "offline", "disconnect", "cut off", "no internet")):
+            uptime_pct = round(((total_tests - outage_count) / total_tests) * 100, 1) if total_tests else 0
+            worst_info = f" Worst period around {worst_str}." if worst_hour is not None else ""
+            return {
+                **base,
+                "answer": (
+                    f"In the past week: {outage_count} outage event(s) detected out of {total_tests} tests "
+                    f"({uptime_pct}% uptime).{worst_info}"
+                ),
+                "uptime_percent": uptime_pct,
+                "suggestions": suggestions,
+            }
+
+        # Ping / latency / lag
+        if any(k in query_lower for k in ("ping", "latency", "lag", "ms", "delay", "response time")):
+            return {
+                **base,
+                "answer": (
+                    f"Your average ping is {avg_ping} ms ({ping_quality}) over {total_tests} tests. "
+                    f"Best hour for low latency: {best_str}. "
+                    + ("Great for gaming and video calls!" if avg_ping < 50
+                       else "Consider wired connection for better latency." if avg_ping < 100
+                       else "High latency detected — contact your ISP or try a wired connection.")
+                ),
+                "ping_quality": ping_quality,
+                "suggestions": suggestions,
+            }
+
+        # Gaming suitability
+        if any(k in query_lower for k in ("gaming", "game", "fps", "competitive", "esport", "fortnite", "warzone")):
+            gaming_ok = avg_ping < 60 and outage_count == 0
+            return {
+                **base,
+                "answer": (
+                    f"Gaming assessment: your avg ping is {avg_ping} ms ({ping_quality}). "
+                    + ("✅ Your connection is suitable for gaming!" if gaming_ok
+                       else f"⚠️ Ping {avg_ping} ms and {outage_count} outage(s) may cause issues in competitive games. "
+                            "Wired connection recommended.")
+                ),
+                "gaming_suitable": gaming_ok,
+                "suggestions": suggestions,
+            }
+
+        # Video calls
+        if any(k in query_lower for k in ("video call", "zoom", "teams", "meet", "skype", "webex", "conference")):
+            vcall_ok = avg_download >= 5 and avg_upload >= 1.5 and avg_ping < 150
+            return {
+                **base,
+                "answer": (
+                    f"Video call assessment: ↓{avg_download} Mbps / ↑{avg_upload} Mbps, ping {avg_ping} ms. "
+                    + ("✅ Your connection is great for video calls!" if vcall_ok
+                       else "⚠️ Marginal quality — may experience occasional drops.")
+                ),
+                "vcall_suitable": vcall_ok,
+                "suggestions": suggestions,
+            }
+
+        # Streaming
+        if any(k in query_lower for k in ("stream", "netflix", "youtube", "4k", "hd", "video quality")):
+            hd_ok = avg_download >= 5
+            uhd_ok = avg_download >= 25
+            return {
+                **base,
+                "answer": (
+                    f"Streaming assessment: avg download {avg_download} Mbps. "
+                    + ("✅ Supports 4K/UHD streaming!" if uhd_ok
+                       else "✅ Supports HD streaming." if hd_ok
+                       else "⚠️ May struggle with HD. Check for background downloads.")
+                ),
+                "supports_4k": uhd_ok,
+                "supports_hd": hd_ok,
+                "suggestions": suggestions,
+            }
+
+        # Average / typical / speed summary
+        if any(k in query_lower for k in ("average", "typical", "speed", "how fast", "mbps", "bandwidth")):
+            result = self._get_averages(client_id)
+            result.setdefault(
+                "answer",
+                f"Your typical speeds: ↓{avg_download} Mbps download, ↑{avg_upload} Mbps upload, "
+                f"{avg_ping} ms ping. Peak: {max_download} Mbps, lowest: {min_download} Mbps ({total_tests} tests)."
+            )
+            return {**base, **result, "suggestions": suggestions}
+
+        # ISP / provider questions
+        if any(k in query_lower for k in ("isp", "provider", "internet provider", "carrier")):
+            isps = list({m.isp for m in measurements if m.isp})
+            isp_str = ", ".join(isps) if isps else "unknown"
+            return {
+                **base,
+                "answer": (
+                    f"Your recorded ISP(s): {isp_str}. "
+                    f"Over {total_tests} tests: avg ↓{avg_download} Mbps, ↑{avg_upload} Mbps, {avg_ping} ms ping. "
+                    f"Uptime: {round(((total_tests - outage_count) / total_tests) * 100, 1)}%."
+                ),
+                "isps_detected": isps,
+                "suggestions": suggestions,
+            }
+
+        # Router maintenance
+        if any(k in query_lower for k in ("reboot", "router", "restart", "maintenance", "reset")):
+            result = self.predict_maintenance(client_id)
+            if "error" in result:
+                answer = (
+                    f"Not enough data for maintenance prediction yet ({total_tests} tests recorded, need 50+). "
+                    f"Current avg: {avg_download} Mbps, ping {avg_ping} ms."
+                )
+            else:
+                answer = result.get("recommendation", "Router operating normally.")
+            result["answer"] = answer
+            return {**base, **result, "suggestions": suggestions}
+
+        # Overall health / status / summary
+        if any(k in query_lower for k in ("overall", "summary", "status", "health", "report", "how is")):
+            uptime_pct = round(((total_tests - outage_count) / total_tests) * 100, 1) if total_tests else 0
+            score = (
+                "excellent" if avg_download > 100 and avg_ping < 20 and uptime_pct >= 99 else
+                "good"      if avg_download > 50  and avg_ping < 50 and uptime_pct >= 95 else
+                "fair"      if avg_download > 10  and avg_ping < 100 else "poor"
+            )
+            return {
+                **base,
+                "answer": (
+                    f"Network health summary — {score.upper()} ({total_tests} tests, past 7 days): "
+                    f"↓{avg_download} Mbps / ↑{avg_upload} Mbps, ping {avg_ping} ms ({ping_quality}), "
+                    f"uptime {uptime_pct}%, outages {outage_count}. "
+                    f"Best hour: {best_str}."
+                ),
+                "health_score": score,
+                "uptime_percent": uptime_pct,
+                "suggestions": suggestions,
+            }
+
+        # ── Default: comprehensive summary ────────────────────────────────────
+        uptime_pct = round(((total_tests - outage_count) / total_tests) * 100, 1) if total_tests else 0
+        return {
+            **base,
+            "answer": (
+                f"Here's your real-time network summary ({total_tests} tests, past 7 days): "
+                f"avg download {avg_download} Mbps, upload {avg_upload} Mbps, ping {avg_ping} ms ({ping_quality}). "
+                f"Uptime: {uptime_pct}%, outages: {outage_count}. "
+                f"Best hour: {best_str}, slowest: {worst_str}. "
+                "Try asking: 'Why is my speed slow?', 'Am I good for gaming?', or 'When is the best time to download?'"
+            ),
+            "uptime_percent": uptime_pct,
+            "suggestions": suggestions,
         }
     
     def _analyze_period(self, client_id: str, hours: int, period_name: str) -> Dict[str, Any]:
