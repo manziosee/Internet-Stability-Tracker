@@ -1128,7 +1128,7 @@ def reject_report(report_id: int, db: Session = Depends(get_db)):
 
 @router.get("/my-connection", tags=["network"],
             summary="My connection info", description="Returns the caller's public IP address, detected ISP, country, city, and ASN via IP geolocation. Also includes the last speed test result for this session.")
-def get_my_connection(request: Request, db: Session = Depends(get_db)):
+def get_my_connection(request: Request, db: Session = Depends(get_db), client_id: Optional[str] = Depends(get_client_id)):
     import httpx
     import re
 
@@ -1217,12 +1217,13 @@ def get_my_connection(request: Request, db: Session = Depends(get_db)):
             except Exception:
                 pass
 
-    # ── Last speed test from DB (scoped to this client if available) ──────────
-    last = (
-        db.query(SpeedMeasurement)
-        .order_by(SpeedMeasurement.timestamp.desc())
-        .first()
-    )
+    # ── Last speed test from DB (scoped to this client so new users see empty) ──
+    last_q = db.query(SpeedMeasurement).order_by(SpeedMeasurement.timestamp.desc())
+    if client_id:
+        last_q = last_q.filter(SpeedMeasurement.client_id == client_id)
+    else:
+        last_q = last_q.filter(False)   # no client_id → never leak other users' data
+    last = last_q.first()
 
     return {
         "public_ip":          geo.get("query") or client_ip or "Unknown",
@@ -2446,6 +2447,195 @@ async def test_alert(
     )
     
     return {"success": success, "message": "Test alert sent" if success else "Alert delivery failed"}
+
+
+@router.get("/alerts/log", tags=["alerts"],
+            summary="Alert history for this device")
+def get_alert_log(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """Return the last N alert log entries scoped to this client."""
+    if not client_id:
+        return []
+    from ..models.measurement import AlertLog
+    logs = (
+        db.query(AlertLog)
+        .filter(AlertLog.client_id == client_id)
+        .order_by(desc(AlertLog.timestamp))
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id":         l.id,
+            "alert_type": l.alert_type,
+            "message":    l.message,
+            "severity":   l.severity,
+            "success":    l.success,
+            "timestamp":  l.timestamp.isoformat(),
+        }
+        for l in logs
+    ]
+
+
+# ─── Prometheus Metrics ───────────────────────────────────────────────────────
+
+@router.get("/metrics", tags=["monitoring"],
+            summary="Prometheus-compatible metrics",
+            response_class=None)
+def prometheus_metrics(db: Session = Depends(get_db)):
+    """Expose key counters in Prometheus text format for Grafana/Prometheus scraping."""
+    from fastapi.responses import PlainTextResponse
+
+    total_measurements = db.query(SpeedMeasurement).count()
+    total_outages      = db.query(SpeedMeasurement).filter(SpeedMeasurement.is_outage == True).count()
+    total_reports      = db.query(CommunityReport).count()
+    total_outage_events = db.query(OutageEvent).count()
+    open_outages       = db.query(OutageEvent).filter(OutageEvent.is_resolved == False).count()
+
+    # Recent 24h averages (global, not per-device)
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    recent = db.query(SpeedMeasurement).filter(SpeedMeasurement.timestamp >= cutoff).all()
+    avg_dl  = round(sum(r.download_speed for r in recent) / len(recent), 2) if recent else 0
+    avg_ul  = round(sum(r.upload_speed   for r in recent) / len(recent), 2) if recent else 0
+    avg_png = round(sum(r.ping           for r in recent) / len(recent), 2) if recent else 0
+
+    lines = [
+        "# HELP ist_measurements_total Total speed test measurements stored",
+        "# TYPE ist_measurements_total counter",
+        f"ist_measurements_total {total_measurements}",
+        "",
+        "# HELP ist_outages_total Total outage measurements",
+        "# TYPE ist_outages_total counter",
+        f"ist_outages_total {total_outages}",
+        "",
+        "# HELP ist_community_reports_total Community-submitted reports",
+        "# TYPE ist_community_reports_total counter",
+        f"ist_community_reports_total {total_reports}",
+        "",
+        "# HELP ist_outage_events_total Structured outage events",
+        "# TYPE ist_outage_events_total counter",
+        f"ist_outage_events_total {total_outage_events}",
+        "",
+        "# HELP ist_outage_events_open Currently open (unresolved) outage events",
+        "# TYPE ist_outage_events_open gauge",
+        f"ist_outage_events_open {open_outages}",
+        "",
+        "# HELP ist_avg_download_mbps_24h Average download speed (Mbps) last 24h",
+        "# TYPE ist_avg_download_mbps_24h gauge",
+        f"ist_avg_download_mbps_24h {avg_dl}",
+        "",
+        "# HELP ist_avg_upload_mbps_24h Average upload speed (Mbps) last 24h",
+        "# TYPE ist_avg_upload_mbps_24h gauge",
+        f"ist_avg_upload_mbps_24h {avg_ul}",
+        "",
+        "# HELP ist_avg_ping_ms_24h Average ping (ms) last 24h",
+        "# TYPE ist_avg_ping_ms_24h gauge",
+        f"ist_avg_ping_ms_24h {avg_png}",
+    ]
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+
+
+# ─── Webhook Management ───────────────────────────────────────────────────────
+
+class WebhookCreate(BaseModel):
+    url:    str = Field(..., min_length=8, max_length=500)
+    secret: Optional[str] = Field(None, max_length=120)
+    events: List[str] = Field(
+        default=["outage", "speed_drop", "recovery"],
+        description="Events to subscribe to: outage, speed_drop, recovery, test",
+    )
+
+
+@router.get("/webhooks", tags=["webhooks"],
+            summary="List registered webhooks for this device")
+def list_webhooks(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        return []
+    from ..models.measurement import Webhook
+    hooks = db.query(Webhook).filter(Webhook.client_id == client_id, Webhook.is_active == True).all()
+    return [
+        {
+            "id":         h.id,
+            "url":        h.url,
+            "events":     h.events,
+            "created_at": h.created_at.isoformat(),
+            "is_active":  h.is_active,
+        }
+        for h in hooks
+    ]
+
+
+@router.post("/webhooks", tags=["webhooks"],
+             summary="Register a new webhook", status_code=201)
+def create_webhook(
+    data: WebhookCreate,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    from ..models.measurement import Webhook
+    # Limit to 5 webhooks per device
+    existing = db.query(Webhook).filter(Webhook.client_id == client_id, Webhook.is_active == True).count()
+    if existing >= 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 active webhooks per device")
+    hook = Webhook(client_id=client_id, url=data.url, secret=data.secret, events=data.events)
+    db.add(hook)
+    db.commit()
+    db.refresh(hook)
+    return {"id": hook.id, "url": hook.url, "events": hook.events, "created_at": hook.created_at.isoformat()}
+
+
+@router.delete("/webhooks/{webhook_id}", tags=["webhooks"],
+               summary="Delete a webhook")
+def delete_webhook(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    from ..models.measurement import Webhook
+    hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.client_id == client_id).first()
+    if not hook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    hook.is_active = False
+    db.commit()
+    return {"message": "Webhook deleted"}
+
+
+@router.post("/webhooks/test/{webhook_id}", tags=["webhooks"],
+             summary="Send a test payload to a webhook")
+async def test_webhook(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    from ..models.measurement import Webhook
+    import httpx as _httpx
+    hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.client_id == client_id).first()
+    if not hook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    payload = {
+        "event": "test",
+        "source": "internet-stability-tracker",
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": {"message": "Webhook test from Internet Stability Tracker"},
+    }
+    try:
+        async with _httpx.AsyncClient(timeout=10) as client_http:
+            r = await client_http.post(hook.url, json=payload)
+            return {"success": r.status_code < 300, "status_code": r.status_code}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ─── Advanced Diagnostics ────────────────────────────────────────────────────

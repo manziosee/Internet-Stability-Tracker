@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Button, CircularProgress, Alert, Chip,
   Card, CardContent, LinearProgress, Tabs, Tab, TextField,
   Accordion, AccordionSummary, AccordionDetails, List, ListItem,
-  ListItemText, ListItemIcon, Stack, useTheme,
+  ListItemText, ListItemIcon, Stack, useTheme, Grid, Skeleton,
 } from '@mui/material';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
 import SpeedIcon from '@mui/icons-material/Speed';
@@ -17,11 +17,156 @@ import ErrorIcon from '@mui/icons-material/Error';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PublicIcon from '@mui/icons-material/Public';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import BusinessIcon from '@mui/icons-material/Business';
+import DevicesIcon from '@mui/icons-material/Devices';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getAdvancedDiagnostics, getPacketLoss, getJitter,
   getBufferbloat, getMTU, getDNSLeak, getVPNSpeedComparison,
+  getMyConnection,
 } from '../services/api';
+
+function detectOS() {
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) return 'Android (Mobile)';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS (Mobile)';
+  if (/CrOS/i.test(ua)) return 'ChromeOS';
+  if (/Windows NT 10/i.test(ua)) return 'Windows 10/11';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac OS X/i.test(ua)) return 'macOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return 'Unknown OS';
+}
+
+function InfoRow({ icon: Icon, label, value, mono = false }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75 }}>
+      <Icon sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
+      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80, fontWeight: 600 }}>{label}</Typography>
+      <Typography variant="body2" fontWeight={700} sx={{ fontFamily: mono ? 'monospace' : undefined, letterSpacing: mono ? '0.04em' : undefined }}>
+        {value || '—'}
+      </Typography>
+    </Box>
+  );
+}
+
+function MyConnectionPanel() {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const [connInfo, setConnInfo] = useState({ device_os: detectOS() });
+  const [connLoading, setConnLoading] = useState(true);
+
+  useEffect(() => {
+    getMyConnection().then((res) => {
+      const d = res.data || {};
+      setConnInfo((prev) => ({
+        ...prev,
+        public_ip:          d.public_ip    || null,
+        isp:                d.isp          || null,
+        org:                d.org          || null,
+        asn:                d.asn          || null,
+        country:            d.country      || null,
+        country_code:       d.country_code || null,
+        region:             d.region       || null,
+        city:               d.city         || null,
+        lat:                d.lat          || null,
+        lon:                d.lon          || null,
+        last_measured_isp:  d.last_measured_isp  || null,
+        last_download_mbps: d.last_download_mbps || null,
+        last_upload_mbps:   d.last_upload_mbps   || null,
+        last_ping_ms:       d.last_ping_ms        || null,
+        last_test_at:       d.last_test_at        || null,
+      }));
+    }).catch(() => {
+      setConnInfo((prev) => ({ ...prev, _geo_error: true }));
+    }).finally(() => setConnLoading(false));
+  }, []);
+
+  return (
+    <Paper sx={{ mb: 3, p: 3, background: isDark ? '#080808' : '#fff', border: '1px solid rgba(240,194,75,0.22)' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <RouterIcon sx={{ fontSize: 20, color: GOLD }} />
+        <Typography variant="h6" fontWeight={700}>My Connection</Typography>
+        {connLoading && <CircularProgress size={14} sx={{ color: GOLD, ml: 'auto' }} />}
+      </Box>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <InfoRow icon={DevicesIcon} label="Device OS" value={connInfo.device_os} />
+          {connLoading
+            ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>{[1,2,3].map((i) => <Skeleton key={i} variant="text" height={24} sx={{ borderRadius: 1 }} />)}</Box>
+            : <>
+                <InfoRow icon={PublicIcon}   label="Public IP" value={connInfo.public_ip} mono />
+                <InfoRow icon={BusinessIcon} label="ISP"       value={connInfo.isp} />
+                <InfoRow icon={BusinessIcon} label="Org / ASN" value={connInfo.org || connInfo.asn} />
+              </>
+          }
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          {connLoading
+            ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>{[1,2,3,4].map((i) => <Skeleton key={i} variant="text" height={24} sx={{ borderRadius: 1 }} />)}</Box>
+            : <>
+                <InfoRow icon={LocationOnIcon} label="Country"
+                  value={connInfo.country ? `${connInfo.country}${connInfo.country_code ? ` (${connInfo.country_code})` : ''}` : null} />
+                <InfoRow icon={LocationOnIcon} label="Region" value={connInfo.region} />
+                <InfoRow icon={LocationOnIcon} label="City"   value={connInfo.city} />
+                {connInfo.lat != null && connInfo.lon != null && (
+                  <InfoRow icon={LocationOnIcon} label="Coordinates"
+                    value={`${Number(connInfo.lat).toFixed(4)}, ${Number(connInfo.lon).toFixed(4)}`} mono />
+                )}
+              </>
+          }
+        </Grid>
+
+        {!connLoading && !connInfo.country && connInfo.public_ip && connInfo.public_ip !== 'Unknown' && (
+          <Grid size={{ xs: 12 }}>
+            <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+              IP detected ({connInfo.public_ip}) but geo lookup is temporarily unavailable.
+            </Alert>
+          </Grid>
+        )}
+        {!connLoading && connInfo._geo_error && (
+          <Grid size={{ xs: 12 }}>
+            <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+              Could not reach the backend to fetch IP / location info.
+            </Alert>
+          </Grid>
+        )}
+
+        {!connLoading && connInfo.last_download_mbps != null && (
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                Last speed test{connInfo.last_measured_isp ? ` via ${connInfo.last_measured_isp}` : ''}:
+              </Typography>
+              {[
+                { label: `↓ ${connInfo.last_download_mbps} Mbps`, color: '#43A047' },
+                { label: `↑ ${connInfo.last_upload_mbps} Mbps`,   color: '#42A5F5' },
+                { label: `${connInfo.last_ping_ms} ms ping`,       color: GOLD },
+              ].map(({ label, color }) => (
+                <Chip key={label} label={label} size="small"
+                  sx={{ fontWeight: 800, fontSize: 11, bgcolor: `${color}14`, color, border: `1px solid ${color}30` }} />
+              ))}
+              {connInfo.last_test_at && (
+                <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto' }}>
+                  {new Date(connInfo.last_test_at).toLocaleString()}
+                </Typography>
+              )}
+            </Box>
+          </Grid>
+        )}
+        {!connLoading && connInfo.last_download_mbps == null && !connInfo._geo_error && (
+          <Grid size={{ xs: 12 }}>
+            <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+              No speed test recorded yet. Run a speed test from the Dashboard to see your latest results here.
+            </Alert>
+          </Grid>
+        )}
+      </Grid>
+    </Paper>
+  );
+}
 
 const GOLD = '#f0c24b';
 
@@ -682,6 +827,11 @@ export default function AdvancedDiagnosticsPage() {
     <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1100, mx: 'auto' }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}>
         <PageHeader loading={loading} onRunAll={runAll} />
+      </motion.div>
+
+      {/* My Connection — always visible at the top */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}>
+        <MyConnectionPanel />
       </motion.div>
 
       <AnimatePresence>
