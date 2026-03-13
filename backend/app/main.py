@@ -33,7 +33,7 @@ from .core.database import engine, Base
 from .scheduler import start_scheduler
 from .models.measurement import (  # noqa: F401 - ensures tables are created
     SpeedMeasurement, CommunityReport, OutageEvent,
-    AlertConfig, AlertLog, UserPreferences, SecurityScan,
+    AlertConfig, AlertLog, UserPreferences, SecurityScan, Webhook,
 )
 
 logging.basicConfig(
@@ -214,6 +214,16 @@ detects outages, and visualises performance across ISPs.
 - **Historical Visualization** (`/api/history/*`) — heatmap calendar, distribution histogram, percentiles, correlation analysis
 - **Enhanced AI Insights** (`/api/ai-insights/*`) — root cause analysis, predictive maintenance, advanced anomaly detection, NL chatbot
 
+### New in v3.1 (Alerts, Webhooks & Monitoring)
+- **Alert log** (`GET /api/alerts/log`) — delivery history per device (channel, severity, success/failure)
+- **Custom Webhooks** (`/api/webhooks`) — CRUD + test; JSON payloads on `outage`, `speed_drop`, `recovery` events
+- **Prometheus metrics** (`GET /api/metrics`) — plain-text counter/gauge endpoint for Grafana scraping
+- **In-memory cache fallback** — all cached endpoints work without Redis (auto-fallback with TTL)
+- **DNS leak fix** — privacy score now checks against known secure resolvers (1.1.1.1, 8.8.8.8, 9.9.9.9, etc.)
+- **AI chatbot** — all 15+ query patterns return a synthesised `answer` field from real DB data (no hardcoded replies)
+- **Bufferbloat/VPN tests** — CDN fallback list (Cloudflare → jsDelivr → Google CDN) for reliable load tests
+- **My Connection isolation** — `/api/my-connection` strictly scoped to requesting device's `X-Client-ID`
+
 ### Rate limits
 | Endpoint | Limit |
 |----------|-------|
@@ -252,6 +262,8 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
         {"name": "video",         "description": "Video call quality metrics: jitter, packet loss, bandwidth for video conferencing"},
         {"name": "recommendations", "description": "Activity recommendations based on current network conditions"},
         {"name": "preferences",   "description": "User preferences and customization settings"},
+        {"name": "webhooks",      "description": "Custom webhook CRUD — register URLs to receive outage/speed_drop/recovery payloads"},
+        {"name": "monitoring",    "description": "Prometheus metrics endpoint for Grafana scraping"},
     ],
     lifespan=lifespan,
     docs_url="/docs",

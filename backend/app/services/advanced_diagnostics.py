@@ -146,6 +146,23 @@ class AdvancedDiagnostics:
         else:
             return "poor"
     
+    # Reliable download URLs tried in order — CDN-backed, widely available
+    _DOWNLOAD_URLS = [
+        "https://speed.cloudflare.com/__down?bytes=10000000",
+        "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+        "https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js",
+        "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
+    ]
+
+    async def _download_for_load_test(self, client: httpx.AsyncClient) -> None:
+        """Download a file to generate load; try multiple CDNs."""
+        for url in self._DOWNLOAD_URLS:
+            try:
+                await client.get(url, timeout=20.0)
+                return
+            except Exception:
+                continue
+
     async def test_bufferbloat(self) -> Dict[str, Any]:
         """Test for bufferbloat (router queue congestion)"""
         try:
@@ -164,7 +181,7 @@ class AdvancedDiagnostics:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 load_latencies = []
                 download_task = asyncio.create_task(
-                    client.get("http://speedtest.ftp.otenet.gr/files/test10Mb.db")
+                    self._download_for_load_test(client)
                 )
 
                 await asyncio.sleep(1)
@@ -374,18 +391,18 @@ class AdvancedDiagnostics:
             return {"error": str(e)}
     
     async def _quick_speed_test(self) -> float:
-        """Quick download speed test"""
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                start = time.time()
-                response = await client.get("http://speedtest.ftp.otenet.gr/files/test10Mb.db")
-                duration = time.time() - start
-                
-                if duration > 0:
-                    mbps = (len(response.content) * 8) / (duration * 1_000_000)
-                    return round(mbps, 2)
-        except:
-            pass
+        """Quick download speed test using multiple CDN fallbacks."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for url in self._DOWNLOAD_URLS:
+                try:
+                    start = time.time()
+                    response = await client.get(url)
+                    duration = time.time() - start
+                    if duration > 0 and len(response.content) > 0:
+                        mbps = (len(response.content) * 8) / (duration * 1_000_000)
+                        return round(mbps, 2)
+                except Exception:
+                    continue
         return 0.0
     
     def _vpn_recommendation(self, without: float, with_vpn: float) -> str:

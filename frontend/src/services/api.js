@@ -251,3 +251,20 @@ export const getPreferences = () =>
 
 export const updatePreferences = (prefs) =>
   api.post('/preferences', prefs);
+
+// ── Alert Log & Webhooks ───────────────────────────────────────────────────────
+
+export const getAlertLog = (limit = 50) =>
+  api.get(`/alerts/log?limit=${limit}`);
+
+export const listWebhooks = () =>
+  api.get('/webhooks');
+
+export const createWebhook = (data) =>
+  api.post('/webhooks', data);
+
+export const deleteWebhook = (id) =>
+  api.delete(`/webhooks/${id}`);
+
+export const testWebhook = (id) =>
+  api.post(`/webhooks/test/${id}`);

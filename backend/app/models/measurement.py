@@ -103,3 +103,14 @@ class SecurityScan(Base):
     vulnerable_ports    = Column(JSON, nullable=True)
     privacy_score       = Column(Float, nullable=True)
     intrusions_detected = Column(Integer, default=0)
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+    id         = Column(Integer, primary_key=True, index=True)
+    client_id  = Column(String, nullable=False, index=True)
+    url        = Column(String, nullable=False)
+    secret     = Column(String, nullable=True)
+    events     = Column(JSON, default=lambda: ["outage", "speed_drop", "recovery"])
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    is_active  = Column(Boolean, default=True, nullable=False)

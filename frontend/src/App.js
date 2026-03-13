@@ -22,6 +22,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import BiotechIcon from '@mui/icons-material/Biotech';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import PsychologyIcon from '@mui/icons-material/Psychology';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -39,6 +40,7 @@ import SecurityDashboard from './components/SecurityDashboard';
 import AdvancedDiagnosticsPage from './components/AdvancedDiagnosticsPage';
 import HistoricalVisualizationPage from './components/HistoricalVisualizationPage';
 import AIInsightsEnhancedPage from './components/AIInsightsEnhancedPage';
+import SmartAlertsPage from './components/SmartAlertsPage';
 
 // Groups used in the desktop nav for visual separation
 const NAV_ITEMS = [
@@ -56,8 +58,9 @@ const NAV_ITEMS = [
   // Group 3 — AI Insights
   { label: 'AI Insights',  path: '/ai-enhanced',          icon: <PsychologyIcon fontSize="small" />,  group: 'g3' },
   // Other
-  { label: 'Advanced',     path: '/advanced',             icon: <InsightsIcon fontSize="small" />,    group: 'other' },
-  { label: 'Security',     path: '/security',             icon: <SecurityIcon fontSize="small" />,    group: 'other' },
+  { label: 'Advanced',     path: '/advanced',             icon: <InsightsIcon fontSize="small" />,              group: 'other' },
+  { label: 'Security',     path: '/security',             icon: <SecurityIcon fontSize="small" />,              group: 'other' },
+  { label: 'Alerts',       path: '/alerts',               icon: <NotificationsActiveIcon fontSize="small" />,   group: 'other' },
 ];
 
 // Full drawer list including hidden routes
@@ -83,8 +86,9 @@ const DRAWER_ITEMS = [
     { label: 'AI Insights (Basic)',  path: '/insights',    icon: <AutoAwesomeIcon /> },
   ]},
   { section: 'Other', items: [
-    { label: 'Advanced',  path: '/advanced', icon: <InsightsIcon /> },
-    { label: 'Security',  path: '/security', icon: <SecurityIcon /> },
+    { label: 'Advanced',      path: '/advanced', icon: <InsightsIcon /> },
+    { label: 'Security',      path: '/security', icon: <SecurityIcon /> },
+    { label: 'Smart Alerts',  path: '/alerts',   icon: <NotificationsActiveIcon /> },
   ]},
 ];
 
@@ -303,6 +307,7 @@ function App() {
             <Route path="/diagnostics-advanced" element={<AdvancedDiagnosticsPage />} />
             <Route path="/history"    element={<HistoricalVisualizationPage />} />
             <Route path="/ai-enhanced" element={<AIInsightsEnhancedPage />} />
+            <Route path="/alerts"     element={<SmartAlertsPage />} />
           </Routes>
         </Box>
       </Box>
