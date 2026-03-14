@@ -2,7 +2,7 @@
   "info": {
     "name": "Internet Stability Tracker API v3",
     "description": "Complete API collection for Internet Stability Tracker v3 — advanced network monitoring with AI insights, security auditing, and real-time diagnostics.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3\n- Gaming metrics with grade + game recommendations\n- Video call quality predictor (Zoom, Teams, Meet)\n- Router health check & reboot detection\n- Activity recommendations (What Can I Do?)\n- Is It Just Me? global outage checker\n- Advanced diagnostics: packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed\n- Network security audit (port scan, privacy score, intrusion detection)\n- Historical visualization (heatmap, distribution, percentiles, correlation, timeline)\n- AI insights enhanced + natural language assistant\n- ML predictions (next hour, outage probability, best download time)\n- Smart alerts (Telegram, Discord, SMS)\n- User preferences (theme, layout, metrics)",
-    "version": "3.0.0",
+    "version": "3.2.0",
     "_postman_id": "ist-api-v3",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -516,19 +516,85 @@
           }
         },
         {
-          "name": "Natural language query",
+          "name": "AI chatbot — why slow",
           "request": {
-            "method": "POST",
-            "header": [
-              { "key": "X-Client-ID", "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"query\": \"Why is my internet slow?\"\n}"
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=Why+is+my+internet+slow",
+              "query": [{ "key": "q", "value": "Why is my internet slow" }]
             },
-            "url": { "raw": "{{base_url}}/ai-insights/query" },
-            "description": "Ask the AI assistant a question about your connection in plain English."
+            "description": "Runs root cause analysis and returns answer + root_causes + recommendations."
+          }
+        },
+        {
+          "name": "AI chatbot — upload speed",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=How+is+my+upload+speed",
+              "query": [{ "key": "q", "value": "How is my upload speed" }]
+            },
+            "description": "Returns focused upload speed analysis: avg, peak, quality label, tip."
+          }
+        },
+        {
+          "name": "AI chatbot — download speed",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=How+is+my+download+speed",
+              "query": [{ "key": "q", "value": "How is my download speed" }]
+            }
+          }
+        },
+        {
+          "name": "AI chatbot — compare upload vs download",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=Compare+my+upload+vs+download",
+              "query": [{ "key": "q", "value": "Compare my upload vs download" }]
+            },
+            "description": "Returns upload/download ratio, connection type (symmetric/download-heavy/upload-heavy), and peak values."
+          }
+        },
+        {
+          "name": "AI chatbot — best time to use internet",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=When+is+the+best+time+to+use+my+internet",
+              "query": [{ "key": "q", "value": "When is the best time to use my internet" }]
+            }
+          }
+        },
+        {
+          "name": "AI chatbot — gaming suitability",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=Is+my+connection+good+for+gaming",
+              "query": [{ "key": "q", "value": "Is my connection good for gaming" }]
+            },
+            "description": "Returns A-D gaming grade, ping quality, and suitability verdict."
+          }
+        },
+        {
+          "name": "AI chatbot — greeting",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=hello",
+              "query": [{ "key": "q", "value": "hello" }]
+            },
+            "description": "Greeting response — returns friendly welcome + live stats snapshot."
           }
         },
         {
@@ -573,7 +639,29 @@
           "request": {
             "method": "GET",
             "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/predictions/best-download-time" }
+            "url": {
+              "raw": "{{base_url}}/predictions/best-download-time?hours_ahead=24",
+              "query": [{ "key": "hours_ahead", "value": "24" }]
+            },
+            "description": "Returns top 3 best hours to download in the next N hours. Uses day-of-week weighted historical patterns."
+          }
+        },
+        {
+          "name": "24h congestion forecast",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/predictions/congestion-24h" },
+            "description": "Hourly congestion scores (0-100) for next 24 hours. Includes notable_periods with human-readable descriptions like 'Evening congestion (7 PM-11 PM) — 35% slower'."
+          }
+        },
+        {
+          "name": "Prediction summary (all-in-one)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/predictions/summary" },
+            "description": "Single endpoint returning all four predictions plus a headline summary. Includes data_quality: insufficient/limited/good."
           }
         }
       ]
