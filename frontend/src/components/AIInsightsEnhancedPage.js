@@ -23,8 +23,12 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import { motion, AnimatePresence } from 'framer-motion';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import {
   getRootCause, getPredictiveMaintenance, getAnomaliesAdvanced, askNaturalQuery,
+  getPredictNextHour, getOutageProbability, getBestDownloadTime, getCongestionForecast,
 } from '../services/api';
 
 const GOLD = '#f0c24b';
@@ -340,11 +344,14 @@ function AnomalyPanel({ data, loading, sensitivity, onSensitivityChange }) {
 
 // ── AI Chatbot ─────────────────────────────────────────────────────────────────
 const SUGGESTED = [
-  "Why was my speed bad yesterday?",
-  "What was my average speed last week?",
-  "When is the best time to download?",
-  "Show me yesterday's performance",
-  "Is my connection degrading?",
+  "How is my upload speed?",
+  "How is my download speed?",
+  "Compare my upload vs download",
+  "Is my connection good for gaming?",
+  "When is the best time to use my internet?",
+  "Why is my speed slow?",
+  "Show last week summary",
+  "How many outages did I have?",
 ];
 
 function ChatBubble({ message }) {
@@ -377,11 +384,24 @@ function ChatBubble({ message }) {
           <Typography variant="body2" sx={{ fontWeight: isUser ? 600 : 400, lineHeight: 1.55 }}>
             {message.content}
           </Typography>
-          {message.data?.avg_speed_mbps && (
+          {/* Speed chips — show whatever fields the response includes */}
+          {(message.data?.avg_download_mbps || message.data?.avg_upload_mbps || message.data?.avg_ping_ms) && (
             <Stack direction="row" gap={0.5} mt={1} flexWrap="wrap">
-              <Chip label={`↓ ${message.data.avg_speed_mbps} Mbps`} size="small" sx={{ fontWeight: 700, fontSize: 10, bgcolor: 'rgba(67,160,71,0.15)', color: '#43A047' }} />
-              {message.data.avg_ping_ms && (
-                <Chip label={`${message.data.avg_ping_ms} ms ping`} size="small" sx={{ fontWeight: 700, fontSize: 10, bgcolor: `rgba(240,194,75,0.15)`, color: GOLD }} />
+              {message.data.avg_download_mbps > 0 && (
+                <Chip label={`↓ ${message.data.avg_download_mbps} Mbps`} size="small"
+                  sx={{ fontWeight: 700, fontSize: 10, bgcolor: 'rgba(67,160,71,0.15)', color: '#43A047' }} />
+              )}
+              {message.data.avg_upload_mbps > 0 && (
+                <Chip label={`↑ ${message.data.avg_upload_mbps} Mbps`} size="small"
+                  sx={{ fontWeight: 700, fontSize: 10, bgcolor: 'rgba(33,150,243,0.15)', color: '#2196F3' }} />
+              )}
+              {message.data.avg_ping_ms > 0 && (
+                <Chip label={`${message.data.avg_ping_ms} ms`} size="small"
+                  sx={{ fontWeight: 700, fontSize: 10, bgcolor: `rgba(240,194,75,0.15)`, color: GOLD }} />
+              )}
+              {message.data.uptime_percent != null && (
+                <Chip label={`${message.data.uptime_percent}% uptime`} size="small"
+                  sx={{ fontWeight: 700, fontSize: 10, bgcolor: 'rgba(156,39,176,0.12)', color: '#9c27b0' }} />
               )}
             </Stack>
           )}
@@ -390,6 +410,15 @@ function ChatBubble({ message }) {
               {message.data.best_hours.slice(0, 4).map((h, i) => (
                 <Chip key={i} label={`${h.hour}:00 · ${h.avg_speed_mbps} Mbps`} size="small"
                   sx={{ fontWeight: 700, fontSize: 10, bgcolor: 'rgba(67,160,71,0.12)', color: '#43A047' }} />
+              ))}
+            </Stack>
+          )}
+          {/* Dynamic suggestion chips from backend */}
+          {!message.role === 'user' && message.data?.suggestions?.length > 0 && (
+            <Stack direction="row" gap={0.5} mt={1.5} flexWrap="wrap">
+              {message.data.suggestions.slice(0, 3).map((s, i) => (
+                <Chip key={i} label={s} size="small" variant="outlined"
+                  sx={{ fontSize: 9, cursor: 'pointer', borderColor: 'rgba(240,194,75,0.3)', color: 'text.secondary' }} />
               ))}
             </Stack>
           )}
@@ -542,6 +571,202 @@ function ChatbotPanel() {
   );
 }
 
+// ── ML Predictions Panel ───────────────────────────────────────────────────────
+function MLPredictionsPanel() {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const [nextHour,    setNextHour]    = useState(null);
+  const [outagePct,   setOutagePct]   = useState(null);
+  const [bestDl,      setBestDl]      = useState(null);
+  const [congestion,  setCongestion]  = useState(null);
+  const [loading,     setLoading]     = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const [nh, op, bd, cg] = await Promise.allSettled([
+          getPredictNextHour(),
+          getOutageProbability(),
+          getBestDownloadTime(24),
+          getCongestionForecast(),
+        ]);
+        if (nh.status === 'fulfilled')  setNextHour(nh.value.data);
+        if (op.status === 'fulfilled')  setOutagePct(op.value.data);
+        if (bd.status === 'fulfilled')  setBestDl(bd.value.data);
+        if (cg.status === 'fulfilled')  setCongestion(cg.value.data);
+      } catch {}
+      setLoading(false);
+    })();
+  }, []);
+
+  const riskColor = { minimal: '#43A047', low: '#8BC34A', medium: '#FFA726', high: '#EF5350', unknown: '#9E9E9E' };
+
+  return (
+    <Paper sx={{ p: 3, background: isDark ? '#080808' : '#fff', border: '1px solid rgba(240,194,75,0.15)' }}>
+      <Stack direction="row" gap={1} alignItems="center" mb={2.5}>
+        <ShowChartIcon sx={{ color: GOLD, fontSize: 22 }} />
+        <Box>
+          <Typography variant="h6" fontWeight={700}>Network Quality Predictions</Typography>
+          <Typography variant="caption" color="text.secondary">ML-based forecasts from your connection history</Typography>
+        </Box>
+      </Stack>
+
+      {loading ? (
+        <Stack spacing={1}>{[1,2,3,4].map(i => <Skeleton key={i} height={52} sx={{ borderRadius: 2 }} />)}</Stack>
+      ) : (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
+
+          {/* Next hour speed */}
+          <Box flex={1} sx={{ minWidth: 180, p: 2, borderRadius: 2,
+            bgcolor: isDark ? 'rgba(67,160,71,0.07)' : 'rgba(67,160,71,0.05)',
+            border: '1px solid rgba(67,160,71,0.2)' }}>
+            <Stack direction="row" alignItems="center" gap={1} mb={1}>
+              <TrendingUpIcon sx={{ fontSize: 18, color: '#43A047' }} />
+              <Typography variant="caption" fontWeight={700} color="text.secondary">Next Hour Forecast</Typography>
+            </Stack>
+            {nextHour?.predicted_download ? (
+              <>
+                <Typography variant="h5" fontWeight={900} sx={{ color: '#43A047' }}>
+                  ↓{nextHour.predicted_download} Mbps
+                </Typography>
+                {nextHour.predicted_upload && (
+                  <Typography variant="caption" color="text.secondary">↑{nextHour.predicted_upload} Mbps upload</Typography>
+                )}
+                {nextHour.predicted_ping && (
+                  <Typography variant="caption" display="block" color="text.secondary">{nextHour.predicted_ping} ms ping</Typography>
+                )}
+                <Typography variant="caption" display="block" sx={{ color: GOLD, mt: 0.5 }}>
+                  {nextHour.confidence}% confidence
+                </Typography>
+                {nextHour.message && (
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                    {nextHour.message}
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.disabled">
+                {nextHour?.message || 'Insufficient data — run more speed tests'}
+              </Typography>
+            )}
+          </Box>
+
+          {/* Outage probability */}
+          <Box flex={1} sx={{ minWidth: 180, p: 2, borderRadius: 2,
+            bgcolor: isDark ? 'rgba(239,83,80,0.06)' : 'rgba(239,83,80,0.04)',
+            border: `1px solid ${riskColor[outagePct?.risk_level || 'unknown']}30` }}>
+            <Stack direction="row" alignItems="center" gap={1} mb={1}>
+              <WarningAmberIcon sx={{ fontSize: 18, color: riskColor[outagePct?.risk_level || 'unknown'] }} />
+              <Typography variant="caption" fontWeight={700} color="text.secondary">Outage Probability</Typography>
+            </Stack>
+            {outagePct?.probability != null ? (
+              <>
+                <Typography variant="h5" fontWeight={900}
+                  sx={{ color: riskColor[outagePct.risk_level || 'minimal'] }}>
+                  {outagePct.probability}%
+                </Typography>
+                <Chip label={outagePct.risk_level || 'minimal'} size="small"
+                  sx={{ fontWeight: 700, fontSize: 10, mt: 0.5,
+                    bgcolor: `${riskColor[outagePct.risk_level || 'minimal']}18`,
+                    color: riskColor[outagePct.risk_level || 'minimal'] }} />
+                {outagePct.message && (
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                    {outagePct.message}
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.disabled">
+                {outagePct?.message || 'Need more data'}
+              </Typography>
+            )}
+          </Box>
+
+          {/* Best download time */}
+          <Box flex={1} sx={{ minWidth: 180, p: 2, borderRadius: 2,
+            bgcolor: isDark ? 'rgba(240,194,75,0.06)' : 'rgba(240,194,75,0.04)',
+            border: '1px solid rgba(240,194,75,0.2)' }}>
+            <Stack direction="row" alignItems="center" gap={1} mb={1}>
+              <CloudDownloadIcon sx={{ fontSize: 18, color: GOLD }} />
+              <Typography variant="caption" fontWeight={700} color="text.secondary">Best Download Time</Typography>
+            </Stack>
+            {bestDl?.best_hour != null ? (
+              <>
+                <Typography variant="h5" fontWeight={900} sx={{ color: GOLD }}>
+                  {String(bestDl.best_hour).padStart(2, '0')}:00
+                </Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  ~{bestDl.expected_speed} Mbps expected
+                </Typography>
+                {bestDl.top_3_times?.length > 0 && (
+                  <Stack direction="row" gap={0.5} mt={0.75} flexWrap="wrap">
+                    {bestDl.top_3_times.map((t, i) => (
+                      <Chip key={i} label={`${String(t.hour).padStart(2,'0')}:00`} size="small"
+                        sx={{ fontSize: 9, fontWeight: 700, bgcolor: `${GOLD}12`, color: GOLD }} />
+                    ))}
+                  </Stack>
+                )}
+                {bestDl.message && (
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                    {bestDl.message}
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.disabled">
+                {bestDl?.message || 'Need more data'}
+              </Typography>
+            )}
+          </Box>
+
+          {/* 24h congestion */}
+          <Box flex={1} sx={{ minWidth: 180, p: 2, borderRadius: 2,
+            bgcolor: isDark ? 'rgba(33,150,243,0.06)' : 'rgba(33,150,243,0.04)',
+            border: '1px solid rgba(33,150,243,0.2)' }}>
+            <Stack direction="row" alignItems="center" gap={1} mb={1}>
+              <AccessTimeIcon sx={{ fontSize: 18, color: '#2196F3' }} />
+              <Typography variant="caption" fontWeight={700} color="text.secondary">24h Congestion</Typography>
+            </Stack>
+            {congestion?.predictions?.length > 0 ? (
+              <>
+                <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                  {congestion.message || 'Hourly congestion forecast'}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: '2px', alignItems: 'flex-end', height: 36 }}>
+                  {congestion.predictions.slice(0, 24).map((p, i) => {
+                    const score = p.congestion_score ?? 50;
+                    const barH  = Math.max(4, Math.round((score / 100) * 36));
+                    const col   = score >= 40 ? '#EF5350' : score >= 20 ? '#FFA726' : '#43A047';
+                    return (
+                      <Box key={i} title={`${p.hour}:00 — ${p.level} (${score}%)`}
+                        sx={{ flex: 1, height: barH, bgcolor: col, borderRadius: '2px 2px 0 0', opacity: 0.8, cursor: 'default' }} />
+                    );
+                  })}
+                </Box>
+                <Stack direction="row" justifyContent="space-between" mt={0.25}>
+                  <Typography variant="caption" sx={{ fontSize: 9, color: 'text.disabled' }}>Now</Typography>
+                  <Typography variant="caption" sx={{ fontSize: 9, color: 'text.disabled' }}>+24h</Typography>
+                </Stack>
+                {congestion.notable_periods?.length > 0 && (
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                    {congestion.notable_periods[0]}
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.disabled">
+                {congestion?.message || 'Need 48h+ of data'}
+              </Typography>
+            )}
+          </Box>
+
+        </Stack>
+      )}
+    </Paper>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function AIInsightsEnhancedPage() {
   const [loading,       setLoading]     = useState(false);
@@ -596,6 +821,11 @@ export default function AIInsightsEnhancedPage() {
       </AnimatePresence>
 
       <Stack spacing={3}>
+        {/* ML Predictions — full width, first */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <MLPredictionsPanel />
+        </motion.div>
+
         {/* Root Cause — full width */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <RootCausePanel data={rootCause} loading={loading} />

@@ -170,7 +170,7 @@ _is_prod = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title="Internet Stability Tracker API",
     description="""
-## Internet Stability Tracker v2.0 — REST API
+## Internet Stability Tracker v3.2 — REST API
 
 Community-driven network monitoring platform that measures internet speed,
 detects outages, and visualises performance across ISPs.
@@ -178,6 +178,7 @@ detects outages, and visualises performance across ISPs.
 **Live API**: https://backend-cold-butterfly-9535.fly.dev/api
 **Frontend**: https://internet-stability-tracker.vercel.app
 **WebSocket**: wss://backend-cold-butterfly-9535.fly.dev/api/ws/live
+**Docs (Swagger)**: https://backend-cold-butterfly-9535.fly.dev/docs
 
 ### Core capabilities
 - **Speed tests** — on-demand via `POST /api/test-now`; results stored in Turso (libSQL cloud)
@@ -201,28 +202,36 @@ detects outages, and visualises performance across ISPs.
 - **Traceroute** (`/api/traceroute`) — server-side path tracing (when available)
 - **Multi-region latency** (`/api/multi-region`) — HTTP latency to 6 geographic regions
 - **Shareable snapshots** (`POST /api/snapshots`) — generate a shareable report URL
-- **Hourly aggregation + weekly report** — APScheduler background jobs
-- **Per-device isolation** — X-Client-ID header scopes data per browser UUID
-- **Outage webhook/email alerts** — configurable via `ALERT_WEBHOOK_URL` / SMTP secrets
+- **Per-device isolation** — X-Client-ID header scopes all personal data per browser UUID
 - **Sentry error tracking** — activates when `SENTRY_DSN` env var is set
 
-### New in v2.1 (ML & Security Features)
-- **ML Predictions** (`/api/ml/*`) — speed forecasts, outage probability, best download times, congestion predictions
-- **Smart Alerts** (`/api/alerts/config`) — multi-channel notifications (Telegram, Discord, SMS) with custom thresholds
-- **Advanced Diagnostics** (`/api/diagnostics/*`) — packet loss, jitter, bufferbloat, MTU discovery, DNS leak, VPN speed
-- **Network Security** (`/api/security/*`) — port scanning, intrusion detection, privacy score, VPN recommendations
-- **Historical Visualization** (`/api/history/*`) — heatmap calendar, distribution histogram, percentiles, correlation analysis
-- **Enhanced AI Insights** (`/api/ai-insights/*`) — root cause analysis, predictive maintenance, advanced anomaly detection, NL chatbot
+### New in v2.1 (ML & Security)
+- **ML Predictions** (`/api/predictions/*`) — speed forecasts, outage probability, best download times, 24h congestion
+- **Smart Alerts** (`/api/alerts/config`) — multi-channel: Telegram, Discord, SMS (Twilio), custom thresholds, quiet hours
+- **Advanced Diagnostics** (`/api/diagnostics/*`) — packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed
+- **Network Security** (`/api/security/*`) — port scan, privacy score (secure DNS check), VPN recommendations
+- **Historical Visualization** (`/api/history/*`) — heatmap calendar, distribution, percentiles, correlation, timeline
+- **Enhanced AI Insights** (`/api/insights/*`) — root cause analysis, predictive maintenance, anomaly detection, NL chatbot
 
-### New in v3.1 (Alerts, Webhooks & Monitoring)
-- **Alert log** (`GET /api/alerts/log`) — delivery history per device (channel, severity, success/failure)
-- **Custom Webhooks** (`/api/webhooks`) — CRUD + test; JSON payloads on `outage`, `speed_drop`, `recovery` events
-- **Prometheus metrics** (`GET /api/metrics`) — plain-text counter/gauge endpoint for Grafana scraping
-- **In-memory cache fallback** — all cached endpoints work without Redis (auto-fallback with TTL)
-- **DNS leak fix** — privacy score now checks against known secure resolvers (1.1.1.1, 8.8.8.8, 9.9.9.9, etc.)
-- **AI chatbot** — all 15+ query patterns return a synthesised `answer` field from real DB data (no hardcoded replies)
-- **Bufferbloat/VPN tests** — CDN fallback list (Cloudflare → jsDelivr → Google CDN) for reliable load tests
-- **My Connection isolation** — `/api/my-connection` strictly scoped to requesting device's `X-Client-ID`
+### New in v3.1 (Webhooks, Monitoring & Fixes)
+- **Alert log** (`GET /api/alerts/log`) — per-device alert delivery history (channel, severity, success/failure)
+- **Custom Webhooks** (`/api/webhooks`) — CRUD + test; receive JSON payloads on `outage`, `speed_drop`, `recovery`
+- **Prometheus metrics** (`GET /api/metrics`) — plain-text Prometheus endpoint for Grafana scraping
+- **In-memory cache fallback** — all cached endpoints work without Redis (auto-fallback with TTL eviction)
+- **My Connection isolation** — `/api/my-connection` strictly scoped to requesting device (`X-Client-ID`)
+
+### New in v3.2 (ML Predictions & AI Chatbot)
+- **scikit-learn LinearRegression** in predictions — trend-based slope + R² feeds confidence scoring
+- **Day-of-week weighted predictions** — weekday vs weekend patterns used for next-hour forecasts
+- **predicted_ping** added to next-hour prediction response
+- **"70% chance of slowdown at 8 PM"** style natural-language messages on every ML prediction
+- **Congestion notable_periods** — `"Evening congestion (7 PM–11 PM) — 35% slower than baseline"`
+- **Prediction summary** (`GET /api/predictions/summary`) — single endpoint, all four predictions + headline
+- **AI chatbot — 20+ specific query paths**: upload, download, compare, trend, gaming, video calls, streaming,
+  greeting (hi/hello), ISP, router, best time to use, outage, ping, speed overview, weekly summary, health report
+- **Fixed "download" → outage false match** — keyword routing order now prevents `download` from triggering outage path
+- **Greeting response** — `hi`/`hello`/`hey` returns a friendly welcome + live stats snapshot
+- **Upload-specific answers** — "how is my upload?" now returns focused upload-only analysis
 
 ### Rate limits
 | Endpoint | Limit |
@@ -236,7 +245,7 @@ detects outages, and visualises performance across ISPs.
 ### Postman collection
 Import `postman_collection.json` from the repo root — pre-configured to hit the live production URL.
 """,
-    version="2.0.0",
+    version="3.2.0",
     contact={
         "name": "Internet Stability Tracker",
         "url": "https://github.com/manziosee/Internet-Stability-Tracker",
