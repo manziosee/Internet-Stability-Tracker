@@ -2,8 +2,7 @@
 
 # 🌐 Internet Stability Tracker
 
-**Community-driven network monitoring — real-time speed, outage detection, AI insights**
-
+**Community-driven network monitoring — real-time speed, outage detection, AI insights, ML predictions, and security analysis**
 
 [![Deploy to Fly.io](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/deploy-fly.yml/badge.svg)](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/deploy-fly.yml)
 [![Build Docker](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/docker-image.yml/badge.svg)](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/docker-image.yml)
@@ -13,6 +12,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Fly.io](https://img.shields.io/badge/Fly.io-deployed-8B5CF6?logo=fly.io&logoColor=white)](https://fly.io)
 [![Vercel](https://img.shields.io/badge/Vercel-deployed-000000?logo=vercel&logoColor=white)](https://vercel.com)
+![Version](https://img.shields.io/badge/API_version-3.2.0-brightgreen)
 
 </div>
 
@@ -30,6 +30,216 @@
 
 ---
 
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          CLIENT LAYER                                    │
+│                                                                          │
+│  ┌─────────────────────┐        ┌──────────────────────────────────┐    │
+│  │  React 18 SPA        │        │  Browser Extension (MV3)         │    │
+│  │  (Vercel CDN)        │        │  Chrome / Firefox                │    │
+│  │  Material UI v6      │        │  auto-test + notifications       │    │
+│  │  Framer Motion       │        └─────────────┬────────────────────┘    │
+│  │  Recharts / Leaflet  │                      │                         │
+│  └──────────┬──────────┘                      │                         │
+│             │  HTTPS REST + WebSocket          │  HTTPS REST             │
+└─────────────┼────────────────────────────────-┼─────────────────────────┘
+              │                                  │
+              ▼                                  ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          API GATEWAY LAYER                               │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │               FastAPI 0.104  (Fly.io — lhr region)                 │  │
+│  │                                                                    │  │
+│  │  Request Pipeline:                                                 │  │
+│  │  ① CORS middleware         → validates allowed origins            │  │
+│  │  ② Security headers        → HSTS, X-Frame-Options, CSP           │  │
+│  │  ③ Rate limiter            → sliding window per IP + X-Client-ID  │  │
+│  │  ④ Request size guard      → 64 KB max body                       │  │
+│  │  ⑤ X-Client-ID extractor  → device UUID from header              │  │
+│  │  ⑥ Router dispatch         → API endpoint handler                 │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          SERVICE LAYER                                   │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ SpeedTest    │  │ AI Insights  │  │ ML Predictor │  │ Network    │  │
+│  │ Service      │  │ Enhanced     │  │ (scikit-learn│  │ Security   │  │
+│  │              │  │ 20+ NL paths │  │  LinearReg)  │  │ (port scan,│  │
+│  │ speedtest-cli│  │              │  │              │  │  DNS leak) │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  │
+│         │                 │                  │                 │         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ Advanced     │  │ SLA Tracker  │  │ Health Score │  │ Weekly     │  │
+│  │ Diagnostics  │  │              │  │ (composite   │  │ Report     │  │
+│  │ (bufferbloat,│  │ promised vs  │  │  0–100)      │  │ Generator  │  │
+│  │  MTU, jitter)│  │ actual)      │  │              │  │            │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └────────────┘  │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ Throttle     │  │ Smart Alerts │  │ Cache        │  │ Webhook    │  │
+│  │ Detector     │  │ (Telegram,   │  │ Service      │  │ Dispatcher │  │
+│  │ (4-CDN probe)│  │  Discord,SMS)│  │ Redis/Memory │  │            │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          DATA LAYER                                      │
+│                                                                          │
+│  ┌──────────────────────────────┐   ┌────────────────────────────────┐  │
+│  │   Turso (libSQL cloud)        │   │   In-memory TTL cache          │  │
+│  │   SQLAlchemy 2 ORM            │   │   (Redis fallback)             │  │
+│  │                               │   └────────────────────────────────┘  │
+│  │   Tables:                     │                                       │
+│  │   • speed_measurements        │   ┌────────────────────────────────┐  │
+│  │   • outage_events             │   │   External APIs                │  │
+│  │   • community_reports         │   │   • ip-api.com (geo lookup)    │  │
+│  │   • alert_configs             │   │   • ipapi.co  (fallback)       │  │
+│  │   • alert_logs                │   │   • Telegram Bot API           │  │
+│  │   • user_preferences          │   │   • Discord Webhooks           │  │
+│  │   • security_scans            │   │   • Twilio SMS                 │  │
+│  │   • webhooks                  │   └────────────────────────────────┘  │
+│  │   • api_keys                  │                                       │
+│  │   • speed_challenges          │                                       │
+│  │   • user_locations            │                                       │
+│  └──────────────────────────────┘                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       BACKGROUND JOBS (APScheduler)                      │
+│                                                                          │
+│  Every :55 min → Hourly aggregation + outage transition detection        │
+│  Monday 08:00  → Weekly report + alert delivery                          │
+│  On demand     → Smart alert evaluation after each speed test            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Data Flow
+
+### Speed Test Flow
+```
+User clicks "Run Speed Test"
+  │
+  ├─ Frontend POST /api/test-now  { X-Client-ID: <uuid> }
+  │
+  ├─ Backend: SpeedTestService.run()
+  │     ├─ speedtest-cli measures download/upload/ping
+  │     ├─ Geo lookup (ip-api.com) → ISP, city, country, lat/lng
+  │     ├─ SpeedMeasurement saved to Turso DB  (scoped to client_id)
+  │     └─ Outage detection: if download < 1 Mbps → OutageEvent created
+  │
+  ├─ Smart alert evaluation
+  │     ├─ Load AlertConfig for device
+  │     ├─ Compare vs thresholds (min_download, max_ping)
+  │     └─ If breach → dispatch to Telegram / Discord / SMS / Webhooks
+  │
+  └─ Response: { download_speed, upload_speed, ping, isp, location, ... }
+       └─ Frontend updates Dashboard, Health Score, weekly stats
+```
+
+### AI Chatbot Flow
+```
+User types question in AI Troubleshooting Assistant
+  │
+  ├─ GET /api/insights/query?q=<question>  { X-Client-ID }
+  │
+  ├─ Backend: answer_natural_query()
+  │     ├─ Load last 7 days measurements for this device
+  │     ├─ Compute: avg_dl, avg_ul, avg_ping, outage_count, best/worst hour
+  │     ├─ Keyword routing (20+ patterns):
+  │     │     "hi/hello"        → greeting + live stats snapshot
+  │     │     "upload"          → focused upload analysis
+  │     │     "download"        → download speed breakdown
+  │     │     "compare"         → upload vs download ratio
+  │     │     "gaming/fps"      → ping grade A–D, suitability verdict
+  │     │     "video call"      → jitter + bandwidth check
+  │     │     "streaming"       → buffer assessment
+  │     │     "slow/why"        → root cause analysis
+  │     │     "best time"       → best hour from historical data
+  │     │     "outage/down"     → outage count + recovery info
+  │     │     "ping/latency"    → ping quality label
+  │     │     "isp"             → ISP comparison from community data
+  │     │     "weekly/summary"  → week-over-week delta
+  │     │     default           → general health overview
+  │     └─ Returns { answer: "...", ...contextual_data }
+  │
+  └─ Frontend renders answer string (never a fallback placeholder)
+```
+
+### Device Isolation Flow
+```
+New browser / incognito tab opens the app
+  │
+  ├─ Frontend: getClientId()
+  │     ├─ Check localStorage for 'ist_client_id'
+  │     ├─ If missing → crypto.randomUUID() → store in localStorage
+  │     └─ Attach as X-Client-ID header on every API request
+  │
+  ├─ Backend: get_client_id(request)
+  │     └─ Reads X-Client-ID header → passed to _scope() helper
+  │
+  ├─ _scope(query, client_id)
+  │     ├─ If client_id present  → .filter(SpeedMeasurement.client_id == client_id)
+  │     └─ If client_id missing  → .filter(False)  ← never leak other users' data
+  │
+  └─ Result: new user always sees empty state until they run their first test
+```
+
+### ML Prediction Flow
+```
+GET /api/predictions/summary  { X-Client-ID }
+  │
+  ├─ Load last 14 days of measurements for device
+  │
+  ├─ NetworkPredictor.predict_next_hour_speed()
+  │     ├─ LinearRegression on (timestamp → download_speed)
+  │     ├─ Day-of-week weighting (weekday vs weekend patterns)
+  │     ├─ Compute slope, R², confidence interval
+  │     └─ Returns predicted_download, predicted_upload, predicted_ping, message
+  │
+  ├─ NetworkPredictor.predict_outage_probability()
+  │     ├─ Count recent outages, compute trend
+  │     └─ Returns probability %, risk_level (low/medium/high), message
+  │
+  ├─ NetworkPredictor.find_best_download_time()
+  │     ├─ Aggregate by hour-of-day → rank by speed
+  │     └─ Returns best_hour, worst_hour, top 3 windows
+  │
+  ├─ NetworkPredictor.predict_congestion_24h()
+  │     ├─ Project next 24 hours using historical hour patterns
+  │     └─ Returns hourly congestion scores + notable_periods text
+  │
+  └─ Aggregate into summary { headline, data_quality, full_predictions }
+```
+
+### Browser Extension Flow
+```
+Chrome Alarm fires every N minutes (configured in options)
+  │
+  ├─ background.js: runSpeedTest()
+  │     ├─ POST /api/test-now  { X-Client-ID: <same uuid as web app> }
+  │     ├─ Store result in chrome.storage.local
+  │     └─ If download < threshold → chrome.notifications.create()
+  │
+  ├─ background.js: checkStatus()
+  │     ├─ GET /api/status
+  │     └─ If outage detected + previous was healthy → outage notification
+  │
+  └─ popup.js reads chrome.storage.local → renders metrics in popup
+       (no API call needed — data already cached from last alarm)
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
@@ -44,17 +254,20 @@
 | ![SQLAlchemy](https://img.shields.io/badge/-SQLAlchemy_2-D71F00?logo=sqlalchemy&logoColor=white&style=flat) | SQLAlchemy 2 | ORM |
 | ![Pydantic](https://img.shields.io/badge/-Pydantic_v2-E92063?logo=pydantic&logoColor=white&style=flat) | Pydantic v2 | Data validation |
 | ![Turso](https://img.shields.io/badge/-Turso_libSQL-4FF8D2?style=flat) | Turso (libSQL) | Edge SQLite cloud DB |
+| ![scikit-learn](https://img.shields.io/badge/-scikit--learn-F7931E?logo=scikit-learn&logoColor=white&style=flat) | scikit-learn | ML speed predictions |
 | ![Docker](https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white&style=flat) | Docker (multi-stage) | Containerisation |
-| ![Fly.io](https://img.shields.io/badge/-Fly.io-8B5CF6?logo=fly.io&logoColor=white&style=flat) | Fly.io | Backend hosting (JNB) |
+| ![Fly.io](https://img.shields.io/badge/-Fly.io-8B5CF6?logo=fly.io&logoColor=white&style=flat) | Fly.io | Backend hosting (lhr) |
 | ![Vercel](https://img.shields.io/badge/-Vercel-000000?logo=vercel&logoColor=white&style=flat) | Vercel | Frontend hosting |
 | ![GitHub Actions](https://img.shields.io/badge/-GitHub_Actions-2088FF?logo=github-actions&logoColor=white&style=flat) | GitHub Actions | CI/CD pipelines |
 | ![APScheduler](https://img.shields.io/badge/-APScheduler-FF9800?style=flat) | APScheduler 3 | Background jobs |
 | ![Sentry](https://img.shields.io/badge/-Sentry-362D59?logo=sentry&logoColor=white&style=flat) | Sentry SDK | Error tracking (opt-in) |
+| Chrome Extension | Manifest V3 | Browser auto-test agent |
 
 ---
 
 ## Pages
 
+### Core
 | Page | Path | Description |
 |------|------|-------------|
 | Dashboard | `/` | Real-time speed stats, quality score, ISP comparison, live bandwidth |
@@ -62,83 +275,141 @@
 | Outage Map | `/map` | Community-reported incidents on an interactive Leaflet map |
 | Report Issue | `/report` | Submit a crowd-sourced network issue with GPS |
 | ISP Reliability | `/isp` | Per-ISP letter grades and weighted leaderboard |
-| Timeline | `/timeline` | Chronological outage/recovery event log |
-| Diagnostics | `/diagnostics` | Public IP, ISP, location + live DNS/HTTP latency |
-| AI Insights | `/insights` | Statistical patterns: congestion windows, trends, optimal times |
-| Advanced | `/advanced` | Heatmap, anomaly detection, comparison, multi-region, traceroute, PDF |
+| Cool Features | `/cool` | Gaming mode, video calls, router health, activity recommendations |
+| Diagnostics | `/diagnostics-advanced` | OS, public IP, location, + packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed |
+
+### Analytics & AI
+| Page | Path | Description |
+|------|------|-------------|
+| AI Insights Enhanced | `/ai-enhanced` | NL chatbot (20+ query paths), root cause, predictive maintenance |
+| Historical Data | `/history` | Heatmap calendar, distribution histogram, percentiles, correlation |
+| Advanced Insights | `/advanced` | Heatmap, anomaly detection (±2σ), comparison, multi-region, PDF |
+| Security | `/security` | Port scan, privacy score, intrusion detection, VPN recommendations |
+| Smart Alerts | `/alerts` | Telegram, Discord, SMS, custom webhooks, alert log, quiet hours |
+
+### New in v3.2
+| Page | Path | Description |
+|------|------|-------------|
+| Health Score | `/health-score` | Composite 0–100 score with grade A+→F and improvement tips |
+| Leaderboard | `/leaderboard` | Community speed rankings — submit and compete |
+| ISP SLA Tracker | `/isp-sla` | Promised vs actual speed compliance with grade and % |
+| Throttle Detector | `/throttle` | Multi-CDN probe to detect selective ISP throttling |
+| Cost Calculator | `/cost-calc` | Cost per Mbps vs US/global benchmarks |
+| Weekly Report | `/weekly-report` | Natural-language 7-day summary with week-over-week trends |
+| Before/After | `/before-after` | Compare two date ranges to measure upgrade impact |
+| ISP Report Card | `/isp-report` | Community-aggregated ISP grades based on real tests |
+| Export Data | `/export` | Download your history as CSV or JSON |
+| API Keys | `/api-keys` | Generate developer API keys (max 5 per device) |
 
 ---
 
-## Features
+## API Endpoints (v3.2)
 
-### Frontend
-- ☀️ Dark/light mode — persisted in `localStorage`
-- 📱 Mobile-responsive navigation (hamburger drawer on small screens)
-- ✨ Animated page transitions with Framer Motion
-- 🗺️ Interactive Leaflet map for outage locations
-- 📡 **WebSocket live feed** — real-time data push, LIVE/POLL indicator
-- 🚀 **Browser-side bandwidth measurement** — actual download/upload to your browser
-- 📊 **Chart zoom/pan** — Recharts `Brush` on speed history (>20 data points)
-- 🔔 **Push notifications** — outage start, recovery, degraded speed (via Notifications API)
-- 📱 **PWA** — installable, stale-while-revalidate service worker caching
-- 📄 **PDF export** — exports Advanced Insights page via `html2canvas` + `jsPDF`
-- 🔗 **Shareable reports** — one-click snapshot URL copied to clipboard
+### Core
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/test-now` | Run on-demand speed test |
+| `GET`  | `/api/my-connection` | Caller IP, ISP, location (scoped to device) |
+| `GET`  | `/api/status` | Global health + 7-day daily summary |
+| `GET`  | `/api/stats` | Aggregated uptime %, averages |
+| `GET`  | `/api/quality-score` | Composite 0–100 quality score |
+| `GET`  | `/api/measurements` | Paginated test history |
+| `WS`   | `/api/ws/live` | Real-time measurement push + heartbeat |
 
-### Backend API Endpoints
+### ML Predictions
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/predictions/next-hour` | Next hour speed forecast (LinearRegression) |
+| `GET` | `/api/predictions/outage-probability` | Outage risk with natural-language message |
+| `GET` | `/api/predictions/best-download-time` | Top 3 best hours to download |
+| `GET` | `/api/predictions/congestion-24h` | Hourly congestion + notable_periods |
+| `GET` | `/api/predictions/summary` | All four predictions + headline in one call |
 
-| Category | Endpoint | Description |
-|----------|----------|-------------|
-| **Speed Test** | `POST /api/test-now` | On-demand speed test (10–30s) |
-| **Measurements** | `GET /api/measurements` | Paginated test history |
-| | `GET /api/measurements/recent` | Last N hours |
-| | `DELETE /api/measurements` | Clear all (admin key required) |
-| **Statistics** | `GET /api/stats` | Aggregated uptime %, averages |
-| | `GET /api/quality-score` | Composite 0–100 score + letter grade |
-| | `GET /api/status` | Platform health + 7-day summary |
-| **Alerts** | `GET /api/alerts` | Current outage + 48h summary |
-| | `GET /api/outage-confidence` | 0–100% confidence score |
-| **Outages** | `GET /api/outages` | Measurements flagged as outages |
-| | `GET /api/outage-events` | Structured event log with duration |
-| | `GET /api/timeline` | Chronological events grouped by date |
-| **ISP** | `GET /api/isp-comparison` | Averages by provider |
-| | `GET /api/isp-reliability` | Uptime % + letter grades |
-| | `GET /api/isp-rankings` | Weighted leaderboard scores |
-| **Reports** | `GET/POST /api/reports` | Community issue submissions |
-| | `POST /api/reports/{id}/confirm\|reject` | Crowd voting |
-| **Network** | `GET /api/network-usage` | Real-time bandwidth sample |
-| | `GET /api/diagnostics` | Live DNS + HTTP latency checks |
-| | `GET /api/bandwidth-probe` | 4–512KB binary payload for browser speed test |
-| | `POST /api/bandwidth-probe` | Upload timing endpoint |
-| | `GET /api/multi-region` | HTTP latency to 6 geographic regions |
-| | `GET /api/traceroute` | Server-side traceroute (when available) |
-| **Insights** | `GET /api/ai-insights` | Statistical pattern analysis |
-| | `GET /api/congestion-heatmap` | 7×24 weekday × hour performance grid |
-| | `GET /api/comparison` | This week vs last week delta % |
-| | `GET /api/anomalies` | Z-score outlier detection (±2σ) |
-| **WebSocket** | `WS /api/ws/live` | Real-time measurement push + heartbeat |
-| **Snapshots** | `POST /api/snapshots` | Create shareable report |
-| | `GET /api/snapshots/{id}` | Retrieve snapshot |
-| **Misc** | `GET /api/my-connection` | Caller IP, ISP, location |
+### AI Insights
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/insights/query?q=` | NL chatbot — 20+ query patterns, always returns `answer` |
+| `GET` | `/api/insights/root-cause` | Root cause analysis |
+| `GET` | `/api/insights/predictive-maintenance` | Maintenance predictor |
+| `GET` | `/api/ai-insights` | Statistical patterns, congestion, trends |
+| `GET` | `/api/anomalies` | Z-score outlier detection (±2σ) |
 
-### Background Jobs (APScheduler)
-- **Hourly aggregation** — runs at :55 past every hour
-- **Weekly report** — runs Monday 08:00 UTC (webhook/email if configured)
-- **Outage alerts** — transition detection: outage start & recovery notifications
+### New in v3.2
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/health-score` | Composite 0–100 health score with grade + tips |
+| `GET`  | `/api/sla/analyze` | ISP SLA compliance — promised vs actual |
+| `GET`  | `/api/throttle/detect` | Multi-CDN throttle probe (4 providers) |
+| `GET`  | `/api/cost-calculator` | Cost per Mbps vs benchmarks |
+| `GET`  | `/api/reports/weekly` | Natural-language weekly report |
+| `GET`  | `/api/comparison/before-after` | Before/after date range comparison |
+| `GET`  | `/api/leaderboard` | Top community speeds |
+| `POST` | `/api/leaderboard/submit` | Submit your best speed |
+| `GET`  | `/api/export/csv` | Download measurements as CSV |
+| `GET`  | `/api/export/json` | Download measurements as JSON |
+| `GET/POST/DELETE` | `/api/api-keys` | Developer API key management |
+| `GET`  | `/api/isp-report-card` | Community ISP grades |
+| `POST` | `/api/integrations/test-webhook` | Test Slack / Teams webhook |
+| `GET/POST/DELETE` | `/api/webhooks` | Custom webhook CRUD |
+| `POST` | `/api/webhooks/test/{id}` | Fire test payload to webhook |
+| `GET`  | `/api/alerts/log` | Alert delivery history |
+| `GET`  | `/api/metrics` | Prometheus metrics (Grafana scraping) |
+
+### Advanced Diagnostics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/diagnostics/all` | Full diagnostic suite |
+| `GET` | `/api/diagnostics/packet-loss` | Packet loss % |
+| `GET` | `/api/diagnostics/jitter` | Jitter measurement |
+| `GET` | `/api/diagnostics/bufferbloat` | Bufferbloat test (CDN fallback list) |
+| `GET` | `/api/diagnostics/mtu` | MTU discovery |
+| `GET` | `/api/diagnostics/dns-leak` | DNS leak detection |
+| `GET` | `/api/diagnostics/vpn-speed` | VPN speed comparison |
+
+### Security
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/security/audit` | Full security audit |
+| `GET` | `/api/security/port-scan` | Port scan |
+| `GET` | `/api/security/privacy-score` | Privacy score (secure DNS check) |
+| `GET` | `/api/security/vpn-recommendation` | VPN recommendation |
 
 ---
 
-## Security
+## Database Schema
 
-| Control | Implementation |
-|---------|---------------|
-| Rate limiting | Sliding-window per-IP **and** per-X-Client-ID |
-| Admin endpoints | `DELETE /api/measurements` requires `X-Admin-Key` header |
-| Input validation | Pydantic v2 schemas; SQLAlchemy ORM (no raw queries) |
-| CORS | Locked to frontend origin in production |
-| Security headers | `X-Content-Type-Options`, `X-Frame-Options: DENY`, HSTS, `Referrer-Policy`, `Permissions-Policy` |
-| Request size limit | 64 KB max body |
-| Docker | Non-root user, multi-stage builds, source maps stripped |
-| Secrets | Environment variables / Fly.io secrets — never committed |
+```
+speed_measurements      — per-device speed test results (X-Client-ID scoped)
+outage_events           — structured outage log with severity + duration
+community_reports       — crowd-sourced incident reports with GPS + voting
+alert_configs           — per-device notification config (Telegram/Discord/SMS)
+alert_logs              — alert delivery history (channel, status, timestamp)
+user_preferences        — per-device UI preferences
+security_scans          — port scan + privacy score results
+webhooks                — custom webhook registrations (max 5/device)
+api_keys                — developer API keys (hashed, max 5/device)
+speed_challenges        — leaderboard entries (best download/upload per device)
+user_locations          — saved monitoring locations per device
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| React 18 + CRA | Frontend SPA | 20+ pages, MUI v6, Recharts, Leaflet |
+| FastAPI 0.104 | REST API + WebSocket | 70+ endpoints, Pydantic v2, SQLAlchemy 2 |
+| Turso (libSQL) | Cloud database | Edge SQLite, per-device data isolation |
+| scikit-learn | ML predictions | LinearRegression speed forecasting |
+| APScheduler | Background jobs | Hourly aggregation, weekly report, alert eval |
+| Redis / memory | Cache | TTL cache with in-memory fallback |
+| Fly.io | Backend hosting | lhr region, 1 machine always warm, HTTPS |
+| Vercel | Frontend hosting | CDN, auto-deploy from GitHub |
+| Chrome MV3 | Browser extension | Auto-test, popup dashboard, notifications |
+| Docker | Containerisation | Multi-stage build, non-root user |
+| GitHub Actions | CI/CD | Deploy on push to `main` |
+| Sentry | Error tracking | Opt-in, activates on `SENTRY_DSN` |
 
 ---
 
@@ -169,10 +440,7 @@ Open http://localhost:3000 — Swagger UI at http://localhost:8000/docs
 ## Docker (Single Container)
 
 ```bash
-# Build
-docker build -t internet-stability-tracker .
-
-# Run (set your secrets)
+docker build -t internet-stability-tracker ./backend
 docker run -p 8000:8000 \
   -e TURSO_DB_URL=libsql://your-db.turso.io \
   -e TURSO_AUTH_TOKEN=your-token \
@@ -192,14 +460,29 @@ docker compose up -d
 
 Opens http://localhost — nginx serves the React app and proxies `/api` to FastAPI.
 
+**Services:**
+- `backend`  — FastAPI on port 8000 (internal)
+- `frontend` — nginx serving React build + reverse proxy on port 80
+- `redis`    — optional cache (backend falls back to in-memory if not configured)
+
 ---
 
-## 📚 Documentation
+## Browser Extension
 
-- **[CI/CD Guide](CI-CD-GUIDE.md)** — Complete deployment documentation
-- **[Quick Reference](QUICK-REFERENCE.md)** — One-line commands cheat sheet
-- **[CI/CD Fixes](CI-CD-FIXES.md)** — Recent fixes and changes
-- **[Cool Features](COOL-FEATURES.md)** — 🔥 NEW: Gaming Mode, Video Calls, Router Health, and more!
+```bash
+# Load in Chrome
+1. Open chrome://extensions/
+2. Enable Developer mode
+3. Click "Load unpacked"
+4. Select the browser-extension/ folder
+
+# Load in Firefox
+1. Go to about:debugging#/runtime/this-firefox
+2. "Load Temporary Add-on"
+3. Select browser-extension/manifest.json
+```
+
+The extension uses the same `ist_client_id` UUID as the web app — your test history is unified.
 
 ---
 
@@ -208,43 +491,37 @@ Opens http://localhost — nginx serves the React app and proxies `/api` to Fast
 ### Backend — Fly.io
 
 ```bash
-# First time setup
 fly launch --no-deploy
-
-# Set secrets
 fly secrets set \
   TURSO_DB_URL=libsql://your-db.turso.io \
   TURSO_AUTH_TOKEN=your-token \
   SECRET_KEY=$(openssl rand -hex 32) \
   ADMIN_API_KEY=$(openssl rand -hex 24)
 
-# Optional: outage alerts
-fly secrets set ALERT_WEBHOOK_URL=https://hooks.slack.com/...
-
-# Optional: Sentry
+# Optional integrations
+fly secrets set TELEGRAM_BOT_TOKEN=...
+fly secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=...
 fly secrets set SENTRY_DSN=https://...@sentry.io/...
 
-# Deploy
 fly deploy
 ```
 
-### CI/CD — GitHub Actions
-
-Auto-deploys on every push to `main`. **Required setup:**
-
-1. Generate a token: `fly tokens create deploy -x 999999h`
-2. Add it at: **GitHub repo → Settings → Secrets → Actions → New repository secret**
-   - Name: `FLY_API_TOKEN`
-   - Value: the token from step 1
-
 ### Frontend — Vercel
 
-Connect the repo to Vercel with these settings:
-- **Framework:** Create React App
-- **Root directory:** `frontend`
-- **Build command:** `npm run build`
-- **Output directory:** `build`
-- **Environment variable:** `REACT_APP_API_URL` = `https://backend-cold-butterfly-9535.fly.dev/api`
+| Setting | Value |
+|---------|-------|
+| Framework | Create React App |
+| Root directory | `frontend` |
+| Build command | `npm run build` |
+| Output directory | `build` |
+| `REACT_APP_API_URL` | `https://backend-cold-butterfly-9535.fly.dev/api` |
+
+### CI/CD — GitHub Actions
+
+Auto-deploys on push to `main`. Add `FLY_API_TOKEN` to GitHub repo secrets:
+```bash
+fly tokens create deploy -x 999999h
+```
 
 ---
 
@@ -256,32 +533,40 @@ Connect the repo to Vercel with these settings:
 |----------|----------|-------------|
 | `TURSO_DB_URL` | ✅ | Turso database URL (`libsql://...`) |
 | `TURSO_AUTH_TOKEN` | ✅ | Turso authentication token |
-| `SECRET_KEY` | ✅ | JWT / session secret (`openssl rand -hex 32`) |
-| `ADMIN_API_KEY` | ✅ | Key for DELETE endpoint (`openssl rand -hex 24`) |
-| `ENVIRONMENT` | — | `production` or `development` (default: `development`) |
-| `ALERT_WEBHOOK_URL` | — | Webhook URL for outage alerts (Slack, Discord, etc.) |
-| `ALERT_EMAIL` | — | Email address to send outage alerts to |
-| `SMTP_HOST` | — | SMTP server hostname |
-| `SMTP_PORT` | — | SMTP port (default: 587) |
-| `SMTP_USER` | — | SMTP username |
-| `SMTP_PASSWORD` | — | SMTP password |
-| `SMTP_FROM` | — | Sender address for alert emails |
+| `SECRET_KEY` | ✅ | Session secret (`openssl rand -hex 32`) |
+| `ADMIN_API_KEY` | ✅ | Key for DELETE endpoint |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram bot for smart alerts |
+| `TWILIO_ACCOUNT_SID` | — | Twilio account SID for SMS alerts |
+| `TWILIO_AUTH_TOKEN` | — | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | — | Twilio sender phone number |
+| `REDIS_URL` | — | Redis URL (falls back to in-memory cache) |
+| `ALERT_WEBHOOK_URL` | — | Fallback webhook for outage alerts |
 | `SENTRY_DSN` | — | Sentry DSN for error tracking |
+| `ENVIRONMENT` | — | `production` or `development` |
 
-### Frontend (Vercel env vars / `.env.local`)
+### Frontend (Vercel / `.env.local`)
 
 | Variable | Description |
 |----------|-------------|
-| `REACT_APP_API_URL` | Backend API URL (e.g. `https://backend-cold-butterfly-9535.fly.dev/api`) |
-| `REACT_APP_SENTRY_DSN` | Sentry DSN for frontend error tracking (optional) |
+| `REACT_APP_API_URL` | Backend API URL |
+| `REACT_APP_SENTRY_DSN` | Sentry DSN (optional) |
 
 ---
 
-## Postman Collection
+## Security
 
-Import `postman_collection.json` from the repo root.
-
-The `base_url` variable defaults to the live production API — no setup needed. Change it to `http://localhost:8000/api` for local development.
+| Control | Implementation |
+|---------|---------------|
+| Rate limiting | Sliding-window per-IP **and** per-X-Client-ID |
+| Admin endpoints | `DELETE /api/measurements` requires `X-Admin-Key` header |
+| Device isolation | All personal queries scoped via `_scope()` helper using `X-Client-ID` |
+| Input validation | Pydantic v2 schemas; SQLAlchemy ORM (no raw queries) |
+| CORS | Locked to frontend origin in production |
+| Security headers | HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy` |
+| API keys | SHA-256 hashed at rest; raw key shown once, never stored |
+| Request size limit | 64 KB max body |
+| Docker | Non-root `appuser`, multi-stage builds |
+| Secrets | Environment variables / Fly.io secrets — never committed |
 
 ---
 
@@ -291,49 +576,82 @@ The `base_url` variable defaults to the live production API — no setup needed.
 Internet-Stability-Tracker/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes.py          # All API endpoints + WebSocket
-│   │   ├── core/config.py         # Pydantic-settings configuration
-│   │   ├── core/database.py       # Turso/libSQL connection
-│   │   ├── models/measurement.py  # SQLAlchemy ORM models
-│   │   ├── services/speed_test.py # speedtest-cli wrapper
-│   │   ├── scheduler.py           # APScheduler jobs (hourly, weekly, alerts)
-│   │   └── main.py                # FastAPI app, middleware, lifespan
-│   ├── .env.example
+│   │   ├── api/routes.py                   # 70+ endpoints + WebSocket
+│   │   ├── core/config.py                  # Pydantic-settings config
+│   │   ├── core/database.py                # Turso/libSQL connection
+│   │   ├── models/measurement.py           # SQLAlchemy models (11 tables)
+│   │   ├── services/
+│   │   │   ├── speed_test.py               # speedtest-cli wrapper
+│   │   │   ├── ai_insights_enhanced.py     # NL chatbot (20+ paths)
+│   │   │   ├── ml_predictions.py           # scikit-learn forecasts
+│   │   │   ├── advanced_diagnostics.py     # packet loss, jitter, bufferbloat
+│   │   │   ├── network_security.py         # port scan, privacy score
+│   │   │   ├── smart_alerts.py             # Telegram, Discord, SMS
+│   │   │   ├── sla_tracker.py              # ISP SLA compliance
+│   │   │   ├── health_score.py             # composite 0–100 score
+│   │   │   ├── weekly_report.py            # NL weekly summary
+│   │   │   ├── throttle_detector.py        # 4-CDN throttle probe
+│   │   │   └── cache_service.py            # Redis + in-memory fallback
+│   │   ├── scheduler.py                    # APScheduler background jobs
+│   │   └── main.py                         # FastAPI app, middleware, lifespan
+│   ├── Dockerfile
+│   ├── fly.toml
 │   └── requirements.txt
 ├── frontend/
-│   ├── public/
-│   │   └── sw.js                  # PWA service worker
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Dashboard.js       # Main dashboard + WebSocket + bandwidth
-│   │   │   ├── StatusPage.js
-│   │   │   ├── OutageMap.js
-│   │   │   ├── ReportForm.js
-│   │   │   ├── ISPReliabilityPage.js
-│   │   │   ├── TimelinePage.js
-│   │   │   ├── DiagnosticsPage.js
-│   │   │   ├── AIInsightsPage.js
-│   │   │   └── AdvancedInsightsPage.js  # Heatmap, anomalies, PDF, share
-│   │   ├── services/api.js        # Axios API client (all endpoints)
-│   │   ├── ColorModeContext.js    # Dark/light mode context
-│   │   └── App.js                 # Router + navigation
-│   ├── .env.example
+│   │   │   ├── Dashboard.js
+│   │   │   ├── AdvancedDiagnosticsPage.js  # My Connection + all diagnostics
+│   │   │   ├── AIInsightsEnhancedPage.js   # NL chatbot + ML predictions
+│   │   │   ├── SmartAlertsPage.js          # Telegram/Discord/SMS/webhooks
+│   │   │   ├── NetworkHealthPage.js        # 0–100 health score
+│   │   │   ├── LeaderboardPage.js          # Community speed rankings
+│   │   │   ├── ISPSLAPage.js               # SLA compliance tracker
+│   │   │   ├── ThrottleDetectorPage.js     # CDN throttle probe
+│   │   │   ├── CostCalculatorPage.js       # Cost per Mbps
+│   │   │   ├── WeeklyReportPage.js         # Weekly summary
+│   │   │   ├── BeforeAfterPage.js          # Before/after comparison
+│   │   │   ├── ISPReportCardPage.js        # Community ISP grades
+│   │   │   ├── ExportPage.js               # CSV / JSON export
+│   │   │   └── APIKeysPage.js              # Developer API key management
+│   │   ├── services/api.js                 # Axios client + cold-start retry
+│   │   └── App.js                          # Router + navigation
 │   └── package.json
+├── browser-extension/
+│   ├── manifest.json                       # Manifest V3
+│   ├── background.js                       # Service worker + alarms
+│   ├── popup.html / popup.js               # Extension popup
+│   ├── options.html / options.js           # Settings page
+│   └── README.md
+├── docker-compose.yml                      # Full stack: backend + frontend + redis
+├── postman_collection.json                 # Pre-configured (v3.2, 80+ requests)
 ├── .github/workflows/
-│   ├── ci.yml                     # Backend smoke test + frontend build check
-│   ├── deploy-fly.yml             # Auto-deploy to Fly.io on push to main
-│   └── docker-image.yml           # Build + push Docker image to GHCR
-├── Dockerfile                     # Multi-stage: React build → FastAPI + static
-├── docker-compose.yml             # Full stack with nginx proxy
-├── fly.toml                       # Fly.io app configuration
-├── vercel.json                    # Vercel security headers + SPA rewrite
-├── .dockerignore                  # Excludes node_modules (~300MB) from build context
-└── postman_collection.json        # Pre-configured Postman collection (v2)
+│   ├── ci.yml
+│   ├── deploy-fly.yml
+│   └── docker-image.yml
+└── vercel.json
 ```
 
 ---
 
+## Postman Collection
+
+Import `postman_collection.json` — 80+ pre-configured requests across 18 folders.
+
+The `base_url` variable defaults to the live production API. Change it to `http://localhost:8000/api` for local development. Set `client_id` to your browser's `ist_client_id` from localStorage to test device-scoped endpoints.
+
+**Folders:** Health · Speed Test · Measurements · Statistics · Outages · ISP · Community Reports · Diagnostics · Security · Historical · AI Insights · ML Predictions · Smart Alerts · Webhooks · Monitoring · New Features (SLA, Throttle, Health Score, Cost, Leaderboard, Export, API Keys) · Browser Extension
+
+---
+
+## 📚 Documentation
+
+- **[CI/CD Guide](CI-CD-GUIDE.md)** — Complete deployment documentation
+- **[Quick Reference](QUICK-REFERENCE.md)** — One-line commands cheat sheet
+- **[Browser Extension](browser-extension/README.md)** — Extension installation guide
+
+---
 
 <div align="center">
-Built with ❤️ using FastAPI, React, Turso, Fly.io, and Vercel
+Built with ❤️ using FastAPI, React, scikit-learn, Turso, Fly.io, and Vercel
 </div>
