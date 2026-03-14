@@ -2355,6 +2355,58 @@ def predict_congestion_24h(
     return NetworkPredictor.predict_congestion_24h(measurements)
 
 
+@router.get("/predictions/summary", tags=["predictions"],
+            summary="All predictions in one call",
+            description="Returns next-hour speed, outage probability, best download time, and 24h congestion forecast as a single response with a headline summary.")
+def predictions_summary(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    n = len(measurements)
+    data_quality = "insufficient" if n < 12 else "limited" if n < 48 else "good"
+
+    next_hour   = NetworkPredictor.predict_next_hour_speed(measurements)
+    outage_prob = NetworkPredictor.predict_outage_probability(measurements)
+    best_dl     = NetworkPredictor.find_best_download_time(measurements)
+    congestion  = NetworkPredictor.predict_congestion_24h(measurements)
+
+    # Build headline
+    if data_quality == "insufficient":
+        headline = f"Not enough data yet ({n} tests recorded). Run more speed tests for accurate predictions."
+    else:
+        pred_dl  = next_hour.get("predicted_download")
+        risk     = outage_prob.get("risk_level", "unknown")
+        best_h   = best_dl.get("best_hour")
+        headline = (
+            f"Next hour: ~{pred_dl} Mbps expected. "
+            f"Outage risk: {risk}. "
+            + (f"Best download window: {best_h:02d}:00." if best_h is not None else "")
+        ) if pred_dl else next_hour.get("message", "Predictions ready.")
+
+    return {
+        "headline":              headline,
+        "data_quality":          data_quality,
+        "measurements_used":     n,
+        "next_hour_summary":     next_hour.get("message", ""),
+        "outage_risk_summary":   outage_prob.get("message", ""),
+        "best_download_summary": best_dl.get("reason", ""),
+        "congestion_summary":    congestion.get("notable_periods", []),
+        "full_predictions": {
+            "next_hour":   next_hour,
+            "outage":      outage_prob,
+            "best_dl":     best_dl,
+            "congestion":  congestion,
+        },
+    }
+
+
 # ─── Smart Alerts Configuration ──────────────────────────────────────────────
 
 from ..services.smart_alerts import SmartAlertService
