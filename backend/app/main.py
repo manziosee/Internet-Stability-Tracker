@@ -221,7 +221,18 @@ detects outages, and visualises performance across ISPs.
 - **In-memory cache fallback** — all cached endpoints work without Redis (auto-fallback with TTL eviction)
 - **My Connection isolation** — `/api/my-connection` strictly scoped to requesting device (`X-Client-ID`)
 
-### New in v3.2 (ML Predictions & AI Chatbot)
+### New in v3.2 (ISP Tools, ML & AI)
+- **ISP SLA Tracker** (`GET /api/sla/analyze`) — compares actual vs promised speeds; grades A–F; 80% threshold
+- **Throttle Detector** (`GET /api/throttle/detect`) — async multi-CDN probe (Cloudflare, jsDelivr, Google CDN, Fastly)
+- **Network Health Score** (`GET /api/health-score`) — composite 0–100 score with grade and tips (dl 25%, ul 20%, ping 25%, stability 15%, uptime 15%)
+- **Weekly Report** (`GET /api/reports/weekly`) — natural-language week-over-week summary with best/worst hours
+- **Cost Calculator** (`GET /api/cost-calculator`) — cost per Mbps vs US/global averages; efficiency verdict
+- **Before/After Comparison** (`GET /api/comparison/before-after`) — delta % between any two date ranges
+- **Speed Leaderboard** (`GET/POST /api/leaderboard`) — community best-speed rankings with submit
+- **Data Export** (`GET /api/export/csv`, `/api/export/json`) — full measurement history download
+- **Developer API Keys** (`GET/POST/DELETE /api/api-keys`) — SHA-256 hashed keys; raw shown once; max 5
+- **ISP Report Card** (`GET /api/isp-report-card`) — per-ISP grades across download/upload/ping/uptime
+- **Slack/Teams Integration** (`POST /api/integrations/test-webhook`) — test Incoming Webhooks for both platforms
 - **scikit-learn LinearRegression** in predictions — trend-based slope + R² feeds confidence scoring
 - **Day-of-week weighted predictions** — weekday vs weekend patterns used for next-hour forecasts
 - **predicted_ping** added to next-hour prediction response
@@ -230,9 +241,7 @@ detects outages, and visualises performance across ISPs.
 - **Prediction summary** (`GET /api/predictions/summary`) — single endpoint, all four predictions + headline
 - **AI chatbot — 20+ specific query paths**: upload, download, compare, trend, gaming, video calls, streaming,
   greeting (hi/hello), ISP, router, best time to use, outage, ping, speed overview, weekly summary, health report
-- **Fixed "download" → outage false match** — keyword routing order now prevents `download` from triggering outage path
-- **Greeting response** — `hi`/`hello`/`hey` returns a friendly welcome + live stats snapshot
-- **Upload-specific answers** — "how is my upload?" now returns focused upload-only analysis
+- **Cold-start protection** — `min_machines_running=1` + `auto_stop_machines=suspend` on Fly.io keeps one machine warm
 
 ### Rate limits
 | Endpoint | Limit |
