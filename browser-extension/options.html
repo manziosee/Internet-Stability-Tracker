@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>IST Settings</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 520px; margin: 40px auto; padding: 0 20px;
+      background: #f5f7fa; color: #212121;
+    }
+    h1 { font-size: 22px; margin-bottom: 24px; color: #1565C0; display: flex; align-items: center; gap: 8px; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 20px 24px;
+      margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    h2 {
+      font-size: 12px; font-weight: 700; margin-bottom: 16px;
+      color: #616161; text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .toggle-row label { font-size: 14px; }
+    input[type=checkbox] { width: 18px; height: 18px; accent-color: #1565C0; cursor: pointer; }
+    .field { margin-bottom: 16px; }
+    .field > label { display: block; font-size: 13px; color: #616161; margin-bottom: 6px; font-weight: 500; }
+    .field input[type=number] {
+      width: 100%; padding: 9px 12px; border: 1px solid #e0e0e0;
+      border-radius: 8px; font-size: 14px; background: #fafafa;
+    }
+    .field input[type=number]:focus { outline: none; border-color: #1565C0; background: #fff; }
+    .range-row { display: flex; align-items: center; gap: 12px; }
+    .range-row input[type=range] { flex: 1; accent-color: #1565C0; }
+    .range-val { font-weight: 700; color: #1565C0; min-width: 36px; font-size: 15px; }
+    .range-unit { font-size: 12px; color: #9e9e9e; }
+    .client-id {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+      color: #9e9e9e; word-break: break-all; margin-top: 8px;
+      background: #f5f5f5; padding: 8px 10px; border-radius: 6px;
+    }
+    .actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+    .btn-save {
+      background: #1565C0; color: #fff; border: none; padding: 11px 28px;
+      border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600;
+    }
+    .btn-save:hover { background: #0d47a1; }
+    .saved-msg { color: #43A047; font-size: 13px; font-weight: 500; display: none; }
+  </style>
+</head>
+<body>
+  <h1>⚙️ IST Settings</h1>
+
+  <div class="card">
+    <h2>Auto Speed Test</h2>
+    <div class="toggle-row">
+      <label for="autoEnabled">Enable automatic speed tests</label>
+      <input type="checkbox" id="autoEnabled" />
+    </div>
+    <div class="field">
+      <label>Test interval</label>
+      <div class="range-row">
+        <input type="range" id="intervalRange" min="5" max="120" step="5" value="30" />
+        <span class="range-val" id="intervalVal">30</span>
+        <span class="range-unit">min</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Notifications</h2>
+    <div class="toggle-row">
+      <label for="notifySlow">Alert when speed drops below threshold</label>
+      <input type="checkbox" id="notifySlow" />
+    </div>
+    <div class="field">
+      <label for="slowThreshold">Slow speed threshold (Mbps)</label>
+      <input type="number" id="slowThreshold" value="10" min="1" max="1000" />
+    </div>
+    <div class="toggle-row">
+      <label for="notifyOutage">Alert on outage/degraded status</label>
+      <input type="checkbox" id="notifyOutage" checked />
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Device ID</h2>
+    <p style="font-size:13px;color:#616161">
+      Your anonymous device identifier — same as the web app, so your data is unified.
+    </p>
+    <div class="client-id" id="clientId">Loading…</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-save" id="saveBtn">Save Settings</button>
+    <span class="saved-msg" id="savedMsg">✓ Saved!</span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

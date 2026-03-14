@@ -804,6 +804,294 @@
       ]
     },
     {
+      "name": "ISP SLA Tracker",
+      "item": [
+        {
+          "name": "Analyze ISP SLA compliance",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/sla/analyze?promised_download=100&promised_upload=20&promised_ping=30&window_days=30",
+              "query": [
+                { "key": "promised_download", "value": "100", "description": "ISP promised download speed in Mbps" },
+                { "key": "promised_upload",   "value": "20",  "description": "ISP promised upload speed in Mbps" },
+                { "key": "promised_ping",     "value": "30",  "description": "ISP promised ping in ms" },
+                { "key": "window_days",       "value": "30",  "description": "Analysis window in days" }
+              ]
+            },
+            "description": "Compares actual measured speeds against ISP promised speeds. Returns compliance %, grade (A-F), and per-metric stats (avg/min/max/p10/p90). SLA met = 80% of promised speed threshold."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Throttle Detector",
+      "item": [
+        {
+          "name": "Detect ISP throttling",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/throttle/detect?baseline_mbps=0",
+              "query": [
+                { "key": "baseline_mbps", "value": "0", "description": "Optional known baseline speed. 0 = auto-detect from DB" }
+              ]
+            },
+            "description": "Probes 4 CDN endpoints (Cloudflare, jsDelivr, Google CDN, Fastly) in parallel. Returns is_throttled, confidence, avg/min/max Mbps, and per-probe results. Ratio < 0.4 vs baseline = throttled."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Network Health Score",
+      "item": [
+        {
+          "name": "Get composite health score",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/health-score?window_days=7",
+              "query": [
+                { "key": "window_days", "value": "7", "description": "Analysis window in days" }
+              ]
+            },
+            "description": "Returns 0–100 score with letter grade (A+/A/B/C/D/F). Weighted: download 25%, upload 20%, ping 25%, stability 15%, uptime 15%. Includes breakdown per metric and actionable tips."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Weekly Report",
+      "item": [
+        {
+          "name": "Generate weekly network report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/reports/weekly" },
+            "description": "Natural-language weekly summary comparing last 7 days vs previous 7 days. Returns headline, narrative, week1/week2 stats, deltas, best/worst hour, outage count, and improvement tips."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cost Calculator",
+      "item": [
+        {
+          "name": "Calculate cost per Mbps",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/cost-calculator?monthly_cost_usd=50&plan_download_mbps=100&plan_upload_mbps=20",
+              "query": [
+                { "key": "monthly_cost_usd",   "value": "50",  "description": "Monthly ISP bill in USD" },
+                { "key": "plan_download_mbps", "value": "100", "description": "Plan promised download in Mbps" },
+                { "key": "plan_upload_mbps",   "value": "20",  "description": "Plan promised upload in Mbps" }
+              ]
+            },
+            "description": "Returns cost_per_plan_mbps, cost_per_actual_mbps, efficiency rating (good/average/poor), benchmark vs US avg ($0.47/Mbps) and global avg ($0.65/Mbps), and a verdict string."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Before/After Comparison",
+      "item": [
+        {
+          "name": "Compare two date ranges",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/comparison/before-after?before_start=2026-01-01&before_end=2026-01-31&after_start=2026-02-01&after_end=2026-02-28",
+              "query": [
+                { "key": "before_start", "value": "2026-01-01", "description": "Start of 'before' period (ISO 8601)" },
+                { "key": "before_end",   "value": "2026-01-31", "description": "End of 'before' period (ISO 8601)" },
+                { "key": "after_start",  "value": "2026-02-01", "description": "Start of 'after' period (ISO 8601)" },
+                { "key": "after_end",    "value": "2026-02-28", "description": "End of 'after' period (ISO 8601)" }
+              ]
+            },
+            "description": "Compares avg download/upload/ping between two date ranges. Returns deltas as % change and a verdict (Improvement/Declined/No change). Omit all params to compare last 30d vs previous 30d."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Speed Leaderboard",
+      "item": [
+        {
+          "name": "Get leaderboard (download)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/leaderboard?metric=download&limit=20",
+              "query": [
+                { "key": "metric", "value": "download", "description": "download or upload" },
+                { "key": "limit",  "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get leaderboard (upload)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/leaderboard?metric=upload&limit=20",
+              "query": [
+                { "key": "metric", "value": "upload" },
+                { "key": "limit",  "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit best speed to leaderboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-ID",  "value": "{{client_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"SpeedDemon99\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/leaderboard/submit" },
+            "description": "Finds the device's personal best download and upload speeds and upserts a leaderboard entry. Requires X-Client-ID. Max one entry per device."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Data Export",
+      "item": [
+        {
+          "name": "Export CSV",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/export/csv?days=30",
+              "query": [{ "key": "days", "value": "30", "description": "Number of days to export" }]
+            },
+            "description": "Downloads a CSV file with all measurements. Response Content-Type: text/csv; filename: speed_data_{date}.csv. Use 'Send and Download' in Postman."
+          }
+        },
+        {
+          "name": "Export JSON",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/export/json?days=30",
+              "query": [{ "key": "days", "value": "30" }]
+            },
+            "description": "Downloads a JSON file with all measurements plus export metadata (device, exported_at, total_records). Use 'Send and Download' in Postman."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Developer API Keys",
+      "item": [
+        {
+          "name": "List API keys",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/api-keys" },
+            "description": "Returns all active API keys for this device (label, created_at, last_used, is_active). Raw key is never shown after creation."
+          }
+        },
+        {
+          "name": "Create API key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-ID",  "value": "{{client_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"My App Key\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api-keys" },
+            "description": "Generates a new API key (UUID v4). The raw key is returned ONCE in the response — store it securely. Only the SHA-256 hash is stored in the database. Max 5 keys per device."
+          }
+        },
+        {
+          "name": "Revoke API key",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": { "raw": "{{base_url}}/api-keys/KEY_ID_HERE" },
+            "description": "Permanently deactivates an API key. Replace KEY_ID_HERE with the numeric key ID from the list endpoint."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ISP Report Card",
+      "item": [
+        {
+          "name": "Get ISP report card",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/isp-report-card?days=30",
+              "query": [{ "key": "days", "value": "30", "description": "Analysis window in days" }]
+            },
+            "description": "Returns a per-ISP report card with grades (A-F) for download, upload, ping, and uptime over the specified window. Sourced from community measurements."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Slack & Teams Integration",
+      "item": [
+        {
+          "name": "Test Slack webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-ID",  "value": "{{client_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK\",\n  \"platform\": \"slack\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/integrations/test-webhook" },
+            "description": "Sends a test message to a Slack incoming webhook. Set platform to 'slack' or 'teams'. Returns http_status and success boolean."
+          }
+        },
+        {
+          "name": "Test Teams webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Client-ID",  "value": "{{client_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK\",\n  \"platform\": \"teams\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/integrations/test-webhook" },
+            "description": "Sends a test Adaptive Card message to a Microsoft Teams incoming webhook."
+          }
+        }
+      ]
+    },
+    {
       "name": "Network Tools (v2)",
       "item": [
         {
