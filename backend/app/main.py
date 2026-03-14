@@ -34,6 +34,7 @@ from .scheduler import start_scheduler
 from .models.measurement import (  # noqa: F401 - ensures tables are created
     SpeedMeasurement, CommunityReport, OutageEvent,
     AlertConfig, AlertLog, UserPreferences, SecurityScan, Webhook,
+    APIKey, UserLocation, SpeedChallenge,
 )
 
 logging.basicConfig(
@@ -273,6 +274,14 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
         {"name": "preferences",   "description": "User preferences and customization settings"},
         {"name": "webhooks",      "description": "Custom webhook CRUD — register URLs to receive outage/speed_drop/recovery payloads"},
         {"name": "monitoring",    "description": "Prometheus metrics endpoint for Grafana scraping"},
+        {"name": "sla",          "description": "ISP SLA compliance tracker — promised vs actual speeds"},
+        {"name": "throttle",     "description": "ISP throttling detector — multi-CDN probe analysis"},
+        {"name": "health",       "description": "Network health score (0–100) with grade and tips"},
+        {"name": "cost",         "description": "Cost-per-Mbps calculator and value benchmarking"},
+        {"name": "leaderboard",  "description": "Community speed leaderboard and challenges"},
+        {"name": "export",       "description": "Data export: CSV and JSON download"},
+        {"name": "api-keys",     "description": "Developer API key management (generate, list, revoke)"},
+        {"name": "integrations", "description": "Slack / Microsoft Teams webhook integration"},
     ],
     lifespan=lifespan,
     docs_url="/docs",

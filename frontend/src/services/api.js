@@ -31,6 +31,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Auto-retry on cold-start connection errors (Fly.io suspends machines when idle)
+// Retry once after 2s on network errors or 503/502 responses
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+    if (config._retried) return Promise.reject(error);
+    const isNetworkError = !error.response;
+    const isColdStart = error.response?.status === 503 || error.response?.status === 502;
+    if (isNetworkError || isColdStart) {
+      config._retried = true;
+      await new Promise((r) => setTimeout(r, 2500));
+      return api(config);
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ── Measurements ───────────────────────────────────────────────────────────
 export const getMeasurements = (skip = 0, limit = 100) =>
   api.get(`/measurements?skip=${skip}&limit=${limit}`);
@@ -268,3 +286,53 @@ export const deleteWebhook = (id) =>
 
 export const testWebhook = (id) =>
   api.post(`/webhooks/test/${id}`);
+
+// ── New Features v3.2 ────────────────────────────────────────────────────────
+
+export const analyzeSLA = (params) =>
+  api.get('/sla/analyze', { params });
+
+export const detectThrottling = (baselineMbps = 0) =>
+  api.get('/throttle/detect', { params: { baseline_mbps: baselineMbps } });
+
+export const getHealthScore = (windowDays = 7) =>
+  api.get('/health-score', { params: { window_days: windowDays } });
+
+export const getWeeklyReport = () =>
+  api.get('/reports/weekly');
+
+export const calculateCost = (params) =>
+  api.get('/cost-calculator', { params });
+
+export const getBeforeAfterComparison = (params) =>
+  api.get('/comparison/before-after', { params });
+
+export const getLeaderboard = (metric = 'download') =>
+  api.get('/leaderboard', { params: { metric } });
+
+export const submitToLeaderboard = (displayName) =>
+  api.post('/leaderboard/submit', { display_name: displayName });
+
+export const exportCSV = (days = 90) =>
+  api.get('/export/csv', { params: { days }, responseType: 'blob' });
+
+export const exportJSONData = (days = 90) =>
+  api.get('/export/json', { params: { days } });
+
+export const listAPIKeys = () =>
+  api.get('/api-keys');
+
+export const createAPIKey = (label) =>
+  api.post('/api-keys', { label });
+
+export const revokeAPIKey = (id) =>
+  api.delete(`/api-keys/${id}`);
+
+export const getISPReportCard = (days = 30) =>
+  api.get('/isp-report-card', { params: { days } });
+
+export const testSlackTeamsWebhook = (webhookUrl, platform = 'slack') =>
+  api.post('/integrations/test-webhook', { webhook_url: webhookUrl, platform });
+
+export const getPredictionsSummary = () =>
+  api.get('/predictions/summary');

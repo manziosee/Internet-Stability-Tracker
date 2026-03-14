@@ -2407,6 +2407,484 @@ def predictions_summary(
     }
 
 
+# ─── ISP SLA Tracker ─────────────────────────────────────────────────────────
+
+@router.get("/sla/analyze", tags=["sla"],
+            summary="Analyze ISP SLA compliance",
+            description="Compare actual speeds against your ISP's promised speeds.")
+def analyze_sla_compliance(
+    promised_download: float = 100.0,
+    promised_upload:   float = 20.0,
+    promised_ping:     float = 30.0,
+    window_days:       int   = 30,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from ..services.sla_tracker import analyze_sla
+    cutoff = datetime.utcnow() - timedelta(days=max(window_days, 1))
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    return analyze_sla(measurements, promised_download, promised_upload, promised_ping, window_days)
+
+
+# ─── Throttling Detector ──────────────────────────────────────────────────────
+
+@router.get("/throttle/detect", tags=["throttle"],
+            summary="Detect ISP throttling",
+            description="Probes multiple CDN endpoints to detect selective bandwidth throttling.")
+async def detect_throttling_endpoint(baseline_mbps: float = 0.0):
+    from ..services.throttle_detector import detect_throttling
+    return await detect_throttling(baseline_mbps)
+
+
+# ─── Network Health Score ─────────────────────────────────────────────────────
+
+@router.get("/health-score", tags=["health"],
+            summary="Composite network health score (0–100)",
+            description="Weighted composite score from download, upload, ping, stability, and uptime.")
+def get_health_score(
+    window_days: int = 7,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from ..services.health_score import compute_health_score
+    cutoff = datetime.utcnow() - timedelta(days=max(window_days, 1))
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    outage_events = (
+        _scope(db.query(OutageEvent), client_id)
+        .filter(OutageEvent.started_at >= cutoff)
+        .all()
+    )
+    return compute_health_score(measurements, outage_events, window_days)
+
+
+# ─── Weekly Report ────────────────────────────────────────────────────────────
+
+@router.get("/reports/weekly", tags=["reports"],
+            summary="Generate weekly network performance report",
+            description="Natural-language weekly summary with week-over-week comparison.")
+def get_weekly_report(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from ..services.weekly_report import generate_weekly_report
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    outage_events = (
+        _scope(db.query(OutageEvent), client_id)
+        .filter(OutageEvent.started_at >= cutoff)
+        .all()
+    )
+    return generate_weekly_report(measurements, outage_events)
+
+
+# ─── Cost-Per-Mbps Calculator ─────────────────────────────────────────────────
+
+@router.get("/cost-calculator", tags=["cost"],
+            summary="Calculate cost efficiency (cost per Mbps)")
+def calculate_cost(
+    monthly_cost_usd:   float = 50.0,
+    plan_download_mbps: float = 100.0,
+    plan_upload_mbps:   float = 20.0,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .all()
+    )
+    downloads  = [m.download_speed for m in measurements if m.download_speed]
+    actual_avg = round(sum(downloads) / len(downloads), 2) if downloads else 0
+    cost_per_plan_mbps   = round(monthly_cost_usd / plan_download_mbps, 4) if plan_download_mbps > 0 else 0
+    cost_per_actual_mbps = round(monthly_cost_usd / actual_avg, 4)         if actual_avg > 0        else 0
+    US_AVG     = 0.47
+    GLOBAL_AVG = 0.65
+    efficiency = "good" if cost_per_plan_mbps <= US_AVG else "average" if cost_per_plan_mbps <= GLOBAL_AVG * 1.5 else "poor"
+    return {
+        "monthly_cost_usd":          monthly_cost_usd,
+        "plan_download_mbps":        plan_download_mbps,
+        "plan_upload_mbps":          plan_upload_mbps,
+        "actual_avg_download_mbps":  actual_avg,
+        "cost_per_plan_mbps":        cost_per_plan_mbps,
+        "cost_per_actual_mbps":      cost_per_actual_mbps,
+        "efficiency":                efficiency,
+        "benchmark": {"us_avg_usd_per_mbps": US_AVG, "global_avg_usd_per_mbps": GLOBAL_AVG},
+        "verdict": (
+            f"✅ Good value! At ${cost_per_plan_mbps}/Mbps you're below the US average (${US_AVG}/Mbps)."
+            if efficiency == "good" else
+            f"⚠️ Average value at ${cost_per_plan_mbps}/Mbps. US average is ${US_AVG}/Mbps."
+            if efficiency == "average" else
+            f"💸 Poor value at ${cost_per_plan_mbps}/Mbps — consider shopping around for better plans."
+        ),
+        "annual_cost_usd": round(monthly_cost_usd * 12, 2),
+    }
+
+
+# ─── Before/After Comparison ──────────────────────────────────────────────────
+
+@router.get("/comparison/before-after", tags=["comparison"],
+            summary="Before/after speed comparison between two date ranges")
+def before_after_comparison(
+    before_start: str = "",
+    before_end:   str = "",
+    after_start:  str = "",
+    after_end:    str = "",
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from datetime import datetime as dt
+    try:
+        now   = datetime.utcnow()
+        b_start = dt.fromisoformat(before_start) if before_start else now - timedelta(days=60)
+        b_end   = dt.fromisoformat(before_end)   if before_end   else now - timedelta(days=30)
+        a_start = dt.fromisoformat(after_start)  if after_start  else now - timedelta(days=30)
+        a_end   = dt.fromisoformat(after_end)    if after_end    else now
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use ISO 8601 (YYYY-MM-DD).")
+
+    q        = _scope(db.query(SpeedMeasurement), client_id)
+    before_m = q.filter(SpeedMeasurement.timestamp >= b_start, SpeedMeasurement.timestamp < b_end).all()
+    after_m  = q.filter(SpeedMeasurement.timestamp >= a_start, SpeedMeasurement.timestamp < a_end).all()
+
+    def _stats(lst):
+        dls = [m.download_speed for m in lst if m.download_speed]
+        uls = [m.upload_speed   for m in lst if m.upload_speed]
+        pgs = [m.ping           for m in lst if m.ping]
+        return {
+            "count":        len(lst),
+            "avg_download": round(sum(dls) / len(dls), 2) if dls else 0,
+            "avg_upload":   round(sum(uls) / len(uls), 2) if uls else 0,
+            "avg_ping":     round(sum(pgs) / len(pgs), 2) if pgs else 0,
+        }
+
+    b = _stats(before_m)
+    a = _stats(after_m)
+
+    def _delta(before, after):
+        if before == 0:
+            return None
+        return round((after - before) / before * 100, 1)
+
+    dl_delta = _delta(b["avg_download"], a["avg_download"])
+    return {
+        "before": {"period": f"{b_start.date()} → {b_end.date()}", **b},
+        "after":  {"period": f"{a_start.date()} → {a_end.date()}", **a},
+        "deltas": {
+            "download_pct": dl_delta,
+            "upload_pct":   _delta(b["avg_upload"], a["avg_upload"]),
+            "ping_pct":     _delta(b["avg_ping"],   a["avg_ping"]),
+        },
+        "verdict": (
+            "✅ Improvement detected after the change."
+            if (dl_delta or 0) > 5 else
+            "📉 Speed declined after the change."
+            if (dl_delta or 0) < -5 else
+            "➡️ No significant change detected between periods."
+        ),
+    }
+
+
+# ─── Speed Leaderboard ────────────────────────────────────────────────────────
+
+from ..models.measurement import SpeedChallenge
+
+class ChallengeSubmit(BaseModel):
+    display_name: str = "Anonymous"
+
+@router.get("/leaderboard", tags=["leaderboard"],
+            summary="Community speed leaderboard")
+def get_leaderboard(
+    metric: str = "download",
+    limit:  int = 50,
+    db: Session = Depends(get_db),
+):
+    q = db.query(SpeedChallenge)
+    if metric == "upload":
+        q = q.order_by(SpeedChallenge.best_upload.desc())
+    else:
+        q = q.order_by(SpeedChallenge.best_download.desc())
+    entries = q.limit(min(limit, 100)).all()
+    return {
+        "metric": metric,
+        "entries": [
+            {
+                "rank":          i + 1,
+                "display_name":  e.display_name,
+                "best_download": e.best_download,
+                "best_upload":   e.best_upload,
+                "isp":           e.isp,
+                "country":       e.country,
+                "recorded_at":   e.recorded_at.isoformat() if e.recorded_at else None,
+            }
+            for i, e in enumerate(entries)
+        ],
+        "total_participants": db.query(SpeedChallenge).count(),
+    }
+
+@router.post("/leaderboard/submit", tags=["leaderboard"],
+             summary="Submit your best speed to the leaderboard")
+def submit_to_leaderboard(
+    payload: ChallengeSubmit,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="X-Client-ID header required.")
+    cutoff = datetime.utcnow() - timedelta(days=90)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .all()
+    )
+    if not measurements:
+        raise HTTPException(status_code=400, detail="No speed tests found. Run a test first.")
+    best_dl  = max((m.download_speed for m in measurements if m.download_speed), default=0)
+    best_ul  = max((m.upload_speed   for m in measurements if m.upload_speed),   default=0)
+    last     = measurements[-1]
+    existing = db.query(SpeedChallenge).filter(SpeedChallenge.client_id == client_id).first()
+    if existing:
+        existing.best_download = max(existing.best_download, best_dl)
+        existing.best_upload   = max(existing.best_upload,   best_ul)
+        existing.display_name  = payload.display_name
+        existing.recorded_at   = datetime.utcnow()
+    else:
+        entry = SpeedChallenge(
+            client_id    = client_id,
+            display_name = payload.display_name,
+            best_download= best_dl,
+            best_upload  = best_ul,
+            isp          = getattr(last, "isp", None),
+            country      = getattr(last, "country_name", None),
+        )
+        db.add(entry)
+    db.commit()
+    return {"message": "Submitted!", "best_download": best_dl, "best_upload": best_ul}
+
+
+# ─── Data Export ─────────────────────────────────────────────────────────────
+
+@router.get("/export/csv", tags=["export"],
+            summary="Export measurements as CSV")
+def export_csv(
+    days: int = 90,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from fastapi.responses import StreamingResponse
+    import io, csv as csv_mod
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    output = io.StringIO()
+    writer = csv_mod.writer(output)
+    writer.writerow(["timestamp", "download_mbps", "upload_mbps", "ping_ms", "isp", "city", "country"])
+    for m in measurements:
+        writer.writerow([
+            m.timestamp.isoformat() if m.timestamp else "",
+            m.download_speed or "",
+            m.upload_speed   or "",
+            m.ping           or "",
+            getattr(m, "isp",          "") or "",
+            getattr(m, "city",         "") or "",
+            getattr(m, "country_name", "") or "",
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=speed_tests_{datetime.utcnow().strftime('%Y%m%d')}.csv"},
+    )
+
+@router.get("/export/json", tags=["export"],
+            summary="Export measurements as JSON")
+def export_json_endpoint(
+    days: int = 90,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    data = [
+        {
+            "timestamp":     m.timestamp.isoformat() if m.timestamp else None,
+            "download_mbps": m.download_speed,
+            "upload_mbps":   m.upload_speed,
+            "ping_ms":       m.ping,
+            "isp":           getattr(m, "isp",          None),
+            "city":          getattr(m, "city",         None),
+            "country":       getattr(m, "country_name", None),
+        }
+        for m in measurements
+    ]
+    return {"count": len(data), "exported_at": datetime.utcnow().isoformat(), "measurements": data}
+
+
+# ─── API Keys ─────────────────────────────────────────────────────────────────
+
+import hashlib, secrets as _secrets
+from ..models.measurement import APIKey
+
+class APIKeyCreate(BaseModel):
+    label: str = "Default"
+
+@router.get("/api-keys", tags=["api-keys"],
+            summary="List API keys for this device")
+def list_api_keys(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="X-Client-ID header required.")
+    keys = db.query(APIKey).filter(APIKey.client_id == client_id, APIKey.is_active == True).all()
+    return [
+        {"id": k.id, "label": k.label,
+         "created_at": k.created_at.isoformat(),
+         "last_used":  k.last_used.isoformat() if k.last_used else None}
+        for k in keys
+    ]
+
+@router.post("/api-keys", tags=["api-keys"],
+             summary="Generate a new API key")
+def create_api_key(
+    payload: APIKeyCreate,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="X-Client-ID header required.")
+    if db.query(APIKey).filter(APIKey.client_id == client_id, APIKey.is_active == True).count() >= 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 active API keys per device.")
+    raw_key  = f"ist_{_secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key = APIKey(client_id=client_id, key_hash=key_hash, label=payload.label)
+    db.add(key)
+    db.commit()
+    db.refresh(key)
+    return {"id": key.id, "label": key.label, "key": raw_key,
+            "message": "Save this key — it won't be shown again."}
+
+@router.delete("/api-keys/{key_id}", tags=["api-keys"],
+               summary="Revoke an API key")
+def revoke_api_key(
+    key_id: int,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="X-Client-ID header required.")
+    key = db.query(APIKey).filter(APIKey.id == key_id, APIKey.client_id == client_id).first()
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found.")
+    key.is_active = False
+    db.commit()
+    return {"message": "API key revoked."}
+
+
+# ─── ISP Report Card ─────────────────────────────────────────────────────────
+
+@router.get("/isp-report-card", tags=["isp"],
+            summary="Community ISP report card — aggregated grades for all ISPs")
+def isp_report_card(
+    days: int = 30,
+    db: Session = Depends(get_db),
+):
+    from collections import defaultdict
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    measurements = db.query(SpeedMeasurement).filter(SpeedMeasurement.timestamp >= cutoff).all()
+    isp_data: dict = defaultdict(lambda: {"downloads": [], "uploads": [], "pings": [], "count": 0})
+    for m in measurements:
+        isp = getattr(m, "isp", None) or "Unknown"
+        if m.download_speed: isp_data[isp]["downloads"].append(m.download_speed)
+        if m.upload_speed:   isp_data[isp]["uploads"].append(m.upload_speed)
+        if m.ping:           isp_data[isp]["pings"].append(m.ping)
+        isp_data[isp]["count"] += 1
+
+    grade_map = [(90, "A+"), (80, "A"), (70, "B"), (60, "C"), (50, "D"), (0, "F")]
+    def _grade(score):
+        for t, g in grade_map:
+            if score >= t:
+                return g
+        return "F"
+
+    report = []
+    for isp, d in isp_data.items():
+        dl = sum(d["downloads"]) / len(d["downloads"]) if d["downloads"] else 0
+        ul = sum(d["uploads"])   / len(d["uploads"])   if d["uploads"]   else 0
+        pg = sum(d["pings"])     / len(d["pings"])     if d["pings"]     else 999
+        dl_s   = min(100, (dl / 100) * 100)
+        ul_s   = min(100, (ul / 50)  * 100)
+        pg_s   = max(0, 100 - (pg / 3))
+        score  = round(dl_s * 0.4 + ul_s * 0.3 + pg_s * 0.3, 1)
+        report.append({
+            "isp":          isp,
+            "score":        score,
+            "grade":        _grade(score),
+            "avg_download": round(dl, 2),
+            "avg_upload":   round(ul, 2),
+            "avg_ping":     round(pg, 2),
+            "test_count":   d["count"],
+        })
+    report.sort(key=lambda x: x["score"], reverse=True)
+    for i, r in enumerate(report):
+        r["rank"] = i + 1
+    return {"window_days": days, "isp_count": len(report), "report_cards": report}
+
+
+# ─── Slack / Teams Integration ────────────────────────────────────────────────
+
+class SlackWebhookTest(BaseModel):
+    webhook_url: str
+    platform:   str = "slack"
+
+@router.post("/integrations/test-webhook", tags=["integrations"],
+             summary="Test a Slack or Teams webhook")
+async def test_slack_teams_webhook(payload: SlackWebhookTest):
+    import httpx
+    platform = payload.platform.lower()
+    if platform == "teams":
+        body = {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": "IST Test",
+            "sections": [{"activityTitle": "🌐 Internet Stability Tracker — Test Notification",
+                          "activityText": "This is a test message from your IST integration."}],
+        }
+    else:
+        body = {"text": "🌐 *Internet Stability Tracker* — Test notification! Your Slack integration is working."}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(payload.webhook_url, json=body, timeout=10)
+        return {"success": r.status_code < 300, "status_code": r.status_code,
+                "message": "Test message sent!" if r.status_code < 300 else f"Failed: HTTP {r.status_code}"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 # ─── Smart Alerts Configuration ──────────────────────────────────────────────
 
 from ..services.smart_alerts import SmartAlertService
