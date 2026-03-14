@@ -23,6 +23,15 @@ import BiotechIcon from '@mui/icons-material/Biotech';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
+import VerifiedIcon from '@mui/icons-material/Verified';
+import ShieldIcon from '@mui/icons-material/Shield';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import DownloadIcon from '@mui/icons-material/Download';
+import KeyIcon from '@mui/icons-material/Key';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -41,6 +50,16 @@ import AdvancedDiagnosticsPage from './components/AdvancedDiagnosticsPage';
 import HistoricalVisualizationPage from './components/HistoricalVisualizationPage';
 import AIInsightsEnhancedPage from './components/AIInsightsEnhancedPage';
 import SmartAlertsPage from './components/SmartAlertsPage';
+import ISPSLAPage from './components/ISPSLAPage';
+import ThrottleDetectorPage from './components/ThrottleDetectorPage';
+import NetworkHealthPage from './components/NetworkHealthPage';
+import WeeklyReportPage from './components/WeeklyReportPage';
+import CostCalculatorPage from './components/CostCalculatorPage';
+import LeaderboardPage from './components/LeaderboardPage';
+import ExportPage from './components/ExportPage';
+import APIKeysPage from './components/APIKeysPage';
+import ISPReportCardPage from './components/ISPReportCardPage';
+import BeforeAfterPage from './components/BeforeAfterPage';
 
 // Groups used in the desktop nav for visual separation
 const NAV_ITEMS = [
@@ -61,6 +80,8 @@ const NAV_ITEMS = [
   { label: 'Advanced',     path: '/advanced',             icon: <InsightsIcon fontSize="small" />,              group: 'other' },
   { label: 'Security',     path: '/security',             icon: <SecurityIcon fontSize="small" />,              group: 'other' },
   { label: 'Alerts',       path: '/alerts',               icon: <NotificationsActiveIcon fontSize="small" />,   group: 'other' },
+  { label: 'Leaderboard',  path: '/leaderboard',          icon: <EmojiEventsIcon fontSize="small" />,           group: 'other' },
+  { label: 'Health Score', path: '/health-score',         icon: <HealthAndSafetyIcon fontSize="small" />,       group: 'other' },
 ];
 
 // Full drawer list including hidden routes
@@ -86,9 +107,21 @@ const DRAWER_ITEMS = [
     { label: 'AI Insights (Basic)',  path: '/insights',    icon: <AutoAwesomeIcon /> },
   ]},
   { section: 'Other', items: [
-    { label: 'Advanced',      path: '/advanced', icon: <InsightsIcon /> },
-    { label: 'Security',      path: '/security', icon: <SecurityIcon /> },
-    { label: 'Smart Alerts',  path: '/alerts',   icon: <NotificationsActiveIcon /> },
+    { label: 'Advanced',      path: '/advanced',     icon: <InsightsIcon /> },
+    { label: 'Security',      path: '/security',     icon: <SecurityIcon /> },
+    { label: 'Smart Alerts',  path: '/alerts',       icon: <NotificationsActiveIcon /> },
+    { label: 'Leaderboard',   path: '/leaderboard',  icon: <EmojiEventsIcon /> },
+    { label: 'Health Score',  path: '/health-score', icon: <HealthAndSafetyIcon /> },
+  ]},
+  { section: 'Tools & Features', items: [
+    { label: 'ISP SLA Tracker',   path: '/isp-sla',       icon: <VerifiedIcon /> },
+    { label: 'Throttle Detector', path: '/throttle',       icon: <ShieldIcon /> },
+    { label: 'Cost Calculator',   path: '/cost-calc',      icon: <AttachMoneyIcon /> },
+    { label: 'Weekly Report',     path: '/weekly-report',  icon: <AssessmentIcon /> },
+    { label: 'Before/After',      path: '/before-after',   icon: <CompareArrowsIcon /> },
+    { label: 'ISP Report Card',   path: '/isp-report',     icon: <StarIcon /> },
+    { label: 'Export Data',       path: '/export',         icon: <DownloadIcon /> },
+    { label: 'API Keys',          path: '/api-keys',       icon: <KeyIcon /> },
   ]},
 ];
 
@@ -307,7 +340,17 @@ function App() {
             <Route path="/diagnostics-advanced" element={<AdvancedDiagnosticsPage />} />
             <Route path="/history"    element={<HistoricalVisualizationPage />} />
             <Route path="/ai-enhanced" element={<AIInsightsEnhancedPage />} />
-            <Route path="/alerts"     element={<SmartAlertsPage />} />
+            <Route path="/alerts"        element={<SmartAlertsPage />} />
+            <Route path="/isp-sla"       element={<ISPSLAPage />} />
+            <Route path="/throttle"      element={<ThrottleDetectorPage />} />
+            <Route path="/health-score"  element={<NetworkHealthPage />} />
+            <Route path="/weekly-report" element={<WeeklyReportPage />} />
+            <Route path="/cost-calc"     element={<CostCalculatorPage />} />
+            <Route path="/leaderboard"   element={<LeaderboardPage />} />
+            <Route path="/export"        element={<ExportPage />} />
+            <Route path="/api-keys"      element={<APIKeysPage />} />
+            <Route path="/isp-report"    element={<ISPReportCardPage />} />
+            <Route path="/before-after"  element={<BeforeAfterPage />} />
           </Routes>
         </Box>
       </Box>

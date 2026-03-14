@@ -114,3 +114,36 @@ class Webhook(Base):
     events     = Column(JSON, default=lambda: ["outage", "speed_drop", "recovery"])
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     is_active  = Column(Boolean, default=True, nullable=False)
+
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+    id         = Column(Integer, primary_key=True, index=True)
+    client_id  = Column(String, nullable=False, index=True)
+    key_hash   = Column(String, nullable=False, unique=True)
+    label      = Column(String, default="Default")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used  = Column(DateTime, nullable=True)
+    is_active  = Column(Boolean, default=True)
+
+
+class UserLocation(Base):
+    __tablename__ = "user_locations"
+    id         = Column(Integer, primary_key=True, index=True)
+    client_id  = Column(String, nullable=False, index=True)
+    label      = Column(String, default="Home")
+    ip_hint    = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active  = Column(Boolean, default=True)
+
+
+class SpeedChallenge(Base):
+    __tablename__ = "speed_challenges"
+    id            = Column(Integer, primary_key=True, index=True)
+    client_id     = Column(String, nullable=False, index=True)
+    display_name  = Column(String, default="Anonymous")
+    best_download = Column(Float, default=0.0)
+    best_upload   = Column(Float, default=0.0)
+    isp           = Column(String, nullable=True)
+    country       = Column(String, nullable=True)
+    recorded_at   = Column(DateTime, default=datetime.utcnow, index=True)
