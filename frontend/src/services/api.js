@@ -313,6 +313,9 @@ export const getLeaderboard = (metric = 'download') =>
 export const submitToLeaderboard = (displayName) =>
   api.post('/leaderboard/submit', { display_name: displayName });
 
+export const getMyRank = () =>
+  api.get('/leaderboard/my-rank');
+
 export const exportCSV = (days = 90) =>
   api.get('/export/csv', { params: { days }, responseType: 'blob' });
 
@@ -336,3 +339,90 @@ export const testSlackTeamsWebhook = (webhookUrl, platform = 'slack') =>
 
 export const getPredictionsSummary = () =>
   api.get('/predictions/summary');
+
+export const getUptimeCalendar = (days = 90) =>
+  api.get('/uptime-calendar', { params: { days } });
+
+export const getISPCommunityStatus = (ispName = '') =>
+  api.get('/isp-community-status', { params: ispName ? { isp_name: ispName } : {} });
+
+export const getSpeedTrend = (weeks = 4) =>
+  api.get('/speed-trend', { params: { weeks } });
+
+// ── v3.3 — New Feature APIs ───────────────────────────────────────────────────
+
+// ISP Contract
+export const getContract = () =>
+  api.get('/contract');
+
+export const saveContract = (data) =>
+  api.post('/contract', data);
+
+export const getContractCompliance = () =>
+  api.get('/contract/compliance');
+
+// Network Quality Certificate
+export const getCertificate = () =>
+  api.get('/certificate');
+
+// Best Time Recommender
+export const getBestTime = () =>
+  api.get('/best-time');
+
+// Multi-Device Aggregator
+export const getMyDeviceGroups = () =>
+  api.get('/devices/my-groups');
+
+export const getNearbyDevices = () =>
+  api.get('/devices/nearby');
+
+export const linkDevice = (data) =>
+  api.post('/devices/link', data);
+
+export const unlinkDevice = (groupId) =>
+  api.delete(`/devices/link/${encodeURIComponent(groupId)}`);
+
+export const compareDevices = () =>
+  api.get('/devices/compare');
+
+// DNS Monitor
+export const runDNSTest = (domain = 'google.com') =>
+  api.get('/dns-test', { params: { domain } });
+
+// Complaint Letter
+export const getComplaintLetter = (params = {}) =>
+  api.get('/complaint-letter', { params: {
+    your_name:      params.your_name      || '',
+    your_address:   params.your_address   || '',
+    isp_name:       params.isp_name       || '',
+    account_number: params.account_number || '',
+    issue_start:    params.issue_start    || '',
+  } });
+
+// Scheduled Tests
+export const getSchedules = () =>
+  api.get('/schedules');
+
+export const createSchedule = (data) =>
+  api.post('/schedules', data);
+
+export const updateSchedule = (id, data) =>
+  api.put(`/schedules/${id}`, data);
+
+export const deleteSchedule = (id) =>
+  api.delete(`/schedules/${id}`);
+
+// Packet Loss & Jitter
+export const runPacketLossTest = (params = {}) =>
+  api.post('/packet-loss/run', null, { params });
+
+export const getPacketLossHistory = (limit = 50) =>
+  api.get('/packet-loss/history', { params: { limit } });
+
+// Neighborhood Outages (enhanced outage map)
+export const getNeighborhoodOutages = (params = {}) =>
+  api.get('/neighborhood-outages', { params });
+
+// WFH Score
+export const getWFHScore = () =>
+  api.get('/wfh-score');

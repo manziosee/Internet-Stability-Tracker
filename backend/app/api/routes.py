@@ -1087,6 +1087,29 @@ class ReportResponseFull(BaseModel):
         from_attributes = True
 
 
+@router.get("/reports/weekly", tags=["reports"],
+            summary="Generate weekly network performance report",
+            description="Natural-language weekly summary with week-over-week comparison.")
+def get_weekly_report_static(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from ..services.weekly_report import generate_weekly_report
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+    outage_events = (
+        _scope(db.query(OutageEvent), client_id)
+        .filter(OutageEvent.started_at >= cutoff)
+        .all()
+    )
+    return generate_weekly_report(measurements, outage_events)
+
+
 @router.get("/reports/{report_id}", response_model=ReportResponseFull, tags=["reports"],
             summary="Get single report", description="Fetch a single community report including verification counts.")
 def get_report(report_id: int, db: Session = Depends(get_db)):
@@ -2467,31 +2490,6 @@ def get_health_score(
     return compute_health_score(measurements, outage_events, window_days)
 
 
-# ─── Weekly Report ────────────────────────────────────────────────────────────
-
-@router.get("/reports/weekly", tags=["reports"],
-            summary="Generate weekly network performance report",
-            description="Natural-language weekly summary with week-over-week comparison.")
-def get_weekly_report(
-    db: Session = Depends(get_db),
-    client_id: Optional[str] = Depends(get_client_id),
-):
-    from ..services.weekly_report import generate_weekly_report
-    cutoff = datetime.utcnow() - timedelta(days=14)
-    measurements = (
-        _scope(db.query(SpeedMeasurement), client_id)
-        .filter(SpeedMeasurement.timestamp >= cutoff)
-        .order_by(SpeedMeasurement.timestamp)
-        .all()
-    )
-    outage_events = (
-        _scope(db.query(OutageEvent), client_id)
-        .filter(OutageEvent.started_at >= cutoff)
-        .all()
-    )
-    return generate_weekly_report(measurements, outage_events)
-
-
 # ─── Cost-Per-Mbps Calculator ─────────────────────────────────────────────────
 
 @router.get("/cost-calculator", tags=["cost"],
@@ -2626,8 +2624,8 @@ def get_leaderboard(
             {
                 "rank":          i + 1,
                 "display_name":  e.display_name,
-                "best_download": e.best_download,
-                "best_upload":   e.best_upload,
+                "best_download": round(e.best_download, 2),
+                "best_upload":   round(e.best_upload,   2),
                 "isp":           e.isp,
                 "country":       e.country,
                 "recorded_at":   e.recorded_at.isoformat() if e.recorded_at else None,
@@ -2635,6 +2633,34 @@ def get_leaderboard(
             for i, e in enumerate(entries)
         ],
         "total_participants": db.query(SpeedChallenge).count(),
+    }
+
+
+@router.get("/leaderboard/my-rank", tags=["leaderboard"],
+            summary="Get your personal best and rank on the leaderboard")
+def get_my_rank(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="X-Client-ID required.")
+    entry = db.query(SpeedChallenge).filter(SpeedChallenge.client_id == client_id).first()
+    if not entry:
+        return {"submitted": False, "message": "You haven't submitted to the leaderboard yet."}
+    # Compute rank
+    dl_rank = db.query(SpeedChallenge).filter(SpeedChallenge.best_download > entry.best_download).count() + 1
+    ul_rank = db.query(SpeedChallenge).filter(SpeedChallenge.best_upload   > entry.best_upload).count()   + 1
+    total   = db.query(SpeedChallenge).count()
+    return {
+        "submitted":      True,
+        "display_name":   entry.display_name,
+        "best_download":  round(entry.best_download, 2),
+        "best_upload":    round(entry.best_upload,   2),
+        "isp":            entry.isp,
+        "download_rank":  dl_rank,
+        "upload_rank":    ul_rank,
+        "total_participants": total,
+        "download_percentile": round((1 - dl_rank / total) * 100, 1) if total else 0,
     }
 
 @router.post("/leaderboard/submit", tags=["leaderboard"],
@@ -2904,6 +2930,26 @@ class AlertConfigCreate(BaseModel):
     quiet_hours_end: Optional[str] = None
 
 
+def _alert_config_dict(config) -> dict:
+    """Serialize AlertConfig to a plain JSON-safe dict.
+    datetime.time columns are converted to "HH:MM" strings so FastAPI
+    doesn't try to encode them and cause a 500."""
+    return {
+        "enabled":              config.enabled,
+        "telegram_enabled":     config.telegram_enabled,
+        "telegram_chat_id":     config.telegram_chat_id,
+        "discord_enabled":      config.discord_enabled,
+        "discord_webhook_url":  config.discord_webhook_url,
+        "sms_enabled":          config.sms_enabled,
+        "phone_number":         config.phone_number,
+        "min_download_speed":   config.min_download_speed,
+        "max_ping":             config.max_ping,
+        "quiet_hours_enabled":  config.quiet_hours_enabled,
+        "quiet_hours_start":    config.quiet_hours_start.strftime("%H:%M") if config.quiet_hours_start else None,
+        "quiet_hours_end":      config.quiet_hours_end.strftime("%H:%M")   if config.quiet_hours_end   else None,
+    }
+
+
 @router.get("/alerts/config", tags=["alerts"],
             summary="Get alert configuration")
 def get_alert_config(
@@ -2912,12 +2958,12 @@ def get_alert_config(
 ):
     if not client_id:
         raise HTTPException(status_code=400, detail="Client ID required")
-    
+
     config = db.query(AlertConfig).filter(AlertConfig.client_id == client_id).first()
     if not config:
-        return {"enabled": False, "message": "No alert configuration found"}
-    
-    return config
+        return {"enabled": False}
+
+    return _alert_config_dict(config)
 
 
 @router.post("/alerts/config", tags=["alerts"],
@@ -2929,34 +2975,34 @@ def configure_alerts(
 ):
     if not client_id:
         raise HTTPException(status_code=400, detail="Client ID required")
-    
+
     from datetime import time as dt_time
-    
+
     config = db.query(AlertConfig).filter(AlertConfig.client_id == client_id).first()
     if not config:
         config = AlertConfig(client_id=client_id, enabled=True)
         db.add(config)
-    
-    config.telegram_enabled = config_data.telegram_enabled
-    config.telegram_chat_id = config_data.telegram_chat_id
-    config.discord_enabled = config_data.discord_enabled
+
+    config.telegram_enabled    = config_data.telegram_enabled
+    config.telegram_chat_id    = config_data.telegram_chat_id
+    config.discord_enabled     = config_data.discord_enabled
     config.discord_webhook_url = config_data.discord_webhook_url
-    config.sms_enabled = config_data.sms_enabled
-    config.phone_number = config_data.phone_number
-    config.min_download_speed = config_data.min_download_speed
-    config.max_ping = config_data.max_ping
+    config.sms_enabled         = config_data.sms_enabled
+    config.phone_number        = config_data.phone_number
+    config.min_download_speed  = config_data.min_download_speed
+    config.max_ping            = config_data.max_ping
     config.quiet_hours_enabled = config_data.quiet_hours_enabled
-    
+
     if config_data.quiet_hours_start:
         h, m = map(int, config_data.quiet_hours_start.split(":"))
         config.quiet_hours_start = dt_time(h, m)
     if config_data.quiet_hours_end:
         h, m = map(int, config_data.quiet_hours_end.split(":"))
         config.quiet_hours_end = dt_time(h, m)
-    
+
     db.commit()
     db.refresh(config)
-    return {"message": "Alert configuration saved", "config": config}
+    return {"message": "Alert configuration saved", **_alert_config_dict(config)}
 
 
 @router.post("/alerts/test", tags=["alerts"],
@@ -3445,3 +3491,1407 @@ def update_preferences(
     db.commit()
     db.refresh(prefs)
     return {"message": "Preferences updated", "preferences": prefs}
+
+
+# ─── Uptime Calendar (90-day daily uptime grid) ───────────────────────────────
+
+@router.get("/uptime-calendar", tags=["stats"],
+            summary="90-day daily uptime calendar",
+            description="Returns a grid of daily uptime % for the last 90 days — useful for GitHub-style heatmap visualization.")
+def uptime_calendar(
+    days:      int = 90,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from datetime import date
+    cutoff = datetime.utcnow() - timedelta(days=max(days, 7))
+    measurements = (
+        _scope(db.query(SpeedMeasurement), client_id)
+        .filter(SpeedMeasurement.timestamp >= cutoff)
+        .order_by(SpeedMeasurement.timestamp)
+        .all()
+    )
+
+    # Group by date
+    by_date: dict = {}
+    for m in measurements:
+        d = m.timestamp.date().isoformat()
+        if d not in by_date:
+            by_date[d] = {"total": 0, "outages": 0}
+        by_date[d]["total"]   += 1
+        by_date[d]["outages"] += 1 if m.is_outage else 0
+
+    calendar = []
+    for i in range(days):
+        d = (datetime.utcnow() - timedelta(days=days - 1 - i)).date().isoformat()
+        stats = by_date.get(d, {"total": 0, "outages": 0})
+        total, outages = stats["total"], stats["outages"]
+        uptime_pct = round((1 - outages / total) * 100, 1) if total > 0 else None
+        level = (
+            3 if uptime_pct is not None and uptime_pct >= 99 else
+            2 if uptime_pct is not None and uptime_pct >= 90 else
+            1 if uptime_pct is not None and uptime_pct >= 50 else
+            0
+        )
+        calendar.append({"date": d, "uptime_pct": uptime_pct, "total": total, "outages": outages, "level": level})
+
+    total_days = sum(1 for c in calendar if c["uptime_pct"] is not None)
+    avg_uptime = round(sum(c["uptime_pct"] for c in calendar if c["uptime_pct"] is not None) / total_days, 1) if total_days else None
+    perfect_days = sum(1 for c in calendar if c["uptime_pct"] == 100.0)
+    outage_days  = sum(1 for c in calendar if c["uptime_pct"] is not None and c["uptime_pct"] < 90)
+
+    return {
+        "days": days,
+        "calendar": calendar,
+        "summary": {
+            "avg_uptime_pct": avg_uptime,
+            "perfect_days":   perfect_days,
+            "outage_days":    outage_days,
+            "tracked_days":   total_days,
+        },
+    }
+
+
+# ─── ISP Community Status ─────────────────────────────────────────────────────
+
+@router.get("/isp-community-status", tags=["isp"],
+            summary="Community-wide ISP health status",
+            description="Aggregates anonymous speed data across all users of the same ISP to show whether issues are local or ISP-wide.")
+def isp_community_status(
+    isp_name: str = "",
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    # Determine ISP from last measurement if not provided
+    if not isp_name and client_id:
+        last = (
+            db.query(SpeedMeasurement)
+            .filter(SpeedMeasurement.client_id == client_id)
+            .order_by(SpeedMeasurement.timestamp.desc())
+            .first()
+        )
+        if last:
+            isp_name = last.isp or ""
+
+    if not isp_name:
+        raise HTTPException(status_code=400, detail="isp_name is required (or run a speed test first)")
+
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    isp_measurements = (
+        db.query(SpeedMeasurement)
+        .filter(
+            SpeedMeasurement.isp.ilike(f"%{isp_name}%"),
+            SpeedMeasurement.timestamp >= cutoff,
+        )
+        .all()
+    )
+
+    total  = len(isp_measurements)
+    if total == 0:
+        return {"isp": isp_name, "status": "no_data", "message": "No community data for this ISP in the last 24h."}
+
+    outages  = sum(1 for m in isp_measurements if m.is_outage)
+    avg_dl   = round(sum(m.download_speed for m in isp_measurements if m.download_speed) / max(total, 1), 1)
+    avg_ping = round(sum(m.ping           for m in isp_measurements if m.ping)           / max(total, 1), 1)
+    outage_pct = round(outages / total * 100, 1)
+    unique_devices = len(set(m.client_id for m in isp_measurements if m.client_id))
+
+    status = "healthy" if outage_pct < 10 else "degraded" if outage_pct < 40 else "outage"
+    verdict = (
+        f"✅ {isp_name} appears healthy for all users ({outage_pct}% outage rate)."
+        if status == "healthy" else
+        f"⚠️ {isp_name} is degraded — {outage_pct}% of users experiencing issues."
+        if status == "degraded" else
+        f"🔴 {isp_name} has a widespread outage — {outage_pct}% of users affected."
+    )
+
+    return {
+        "isp":           isp_name,
+        "status":        status,
+        "outage_pct":    outage_pct,
+        "avg_download":  avg_dl,
+        "avg_ping":      avg_ping,
+        "total_reports": total,
+        "unique_devices": unique_devices,
+        "window_hours":  24,
+        "verdict":       verdict,
+    }
+
+
+# ─── Speed Trend (multi-week decline/improvement detector) ────────────────────
+
+@router.get("/speed-trend", tags=["stats"],
+            summary="Multi-week speed trend analysis",
+            description="Detects if your internet speed is improving or declining over the past several weeks.")
+def speed_trend(
+    weeks: int = 4,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    from datetime import date
+
+    results = []
+    now = datetime.utcnow()
+
+    for i in range(weeks):
+        start = now - timedelta(weeks=weeks - i)
+        end   = now - timedelta(weeks=weeks - i - 1)
+        measurements = (
+            _scope(db.query(SpeedMeasurement), client_id)
+            .filter(SpeedMeasurement.timestamp >= start, SpeedMeasurement.timestamp < end)
+            .all()
+        )
+        dls = [m.download_speed for m in measurements if m.download_speed]
+        uls = [m.upload_speed   for m in measurements if m.upload_speed]
+        pgs = [m.ping           for m in measurements if m.ping]
+        results.append({
+            "week_label":    f"Week {i+1}",
+            "week_start":    start.date().isoformat(),
+            "week_end":      end.date().isoformat(),
+            "avg_download":  round(sum(dls)/len(dls), 1) if dls else None,
+            "avg_upload":    round(sum(uls)/len(uls), 1) if uls else None,
+            "avg_ping":      round(sum(pgs)/len(pgs), 1) if pgs else None,
+            "sample_count":  len(measurements),
+        })
+
+    # Trend: compare first vs last non-null weeks
+    valid = [r for r in results if r["avg_download"] is not None]
+    trend = "insufficient_data"
+    trend_pct = None
+    if len(valid) >= 2:
+        first_dl = valid[0]["avg_download"]
+        last_dl  = valid[-1]["avg_download"]
+        trend_pct = round((last_dl - first_dl) / first_dl * 100, 1) if first_dl else None
+        if trend_pct is not None:
+            trend = "improving" if trend_pct > 5 else "declining" if trend_pct < -5 else "stable"
+
+    verdict = (
+        f"📈 Speed improved by {abs(trend_pct)}% over {weeks} weeks."
+        if trend == "improving" else
+        f"📉 Speed declined by {abs(trend_pct)}% over {weeks} weeks. Consider contacting your ISP."
+        if trend == "declining" else
+        f"➡️ Speed has been stable over {weeks} weeks."
+        if trend == "stable" else
+        "Not enough data to determine trend."
+    )
+
+    return {
+        "weeks":     weeks,
+        "trend":     trend,
+        "trend_pct": trend_pct,
+        "verdict":   verdict,
+        "data":      results,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v3.3 — New Feature Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from ..models.measurement import (
+    ISPContract, TestSchedule, PacketLossReading, DeviceGroup,
+)
+
+
+# ── Shared Pydantic schemas ────────────────────────────────────────────────────
+
+class ISPContractIn(BaseModel):
+    isp_name:          str
+    plan_name:         Optional[str] = None
+    promised_download: float
+    promised_upload:   Optional[float] = None
+    monthly_cost:      Optional[float] = None
+    currency:          str = "USD"
+    contract_start:    Optional[str] = None
+    contract_end:      Optional[str] = None
+    sla_threshold_pct: float = 80.0
+
+class ScheduleIn(BaseModel):
+    label:       str = "My Schedule"
+    hours:       List[int] = [8, 13, 18, 23]
+    days:        List[int] = [0,1,2,3,4,5,6]
+    enabled:     bool = True
+    burst_count: int  = 1
+
+class DeviceLinkIn(BaseModel):
+    group_id:   Optional[str] = None
+    label:      str = "My Device"
+    is_primary: bool = False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. ISP Contract vs Reality Tracker
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/contract", tags=["contract"], summary="Get ISP contract details")
+def get_contract(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    c = db.query(ISPContract).filter(ISPContract.client_id == client_id).first()
+    if not c:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "isp_name": c.isp_name, "plan_name": c.plan_name,
+        "promised_download": c.promised_download, "promised_upload": c.promised_upload,
+        "monthly_cost": c.monthly_cost, "currency": c.currency,
+        "contract_start": c.contract_start.isoformat() if c.contract_start else None,
+        "contract_end":   c.contract_end.isoformat()   if c.contract_end   else None,
+        "sla_threshold_pct": c.sla_threshold_pct,
+    }
+
+
+@router.post("/contract", tags=["contract"], summary="Save ISP contract details")
+def save_contract(
+    data: ISPContractIn,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    c = db.query(ISPContract).filter(ISPContract.client_id == client_id).first()
+    if not c:
+        c = ISPContract(client_id=client_id)
+        db.add(c)
+    c.isp_name          = data.isp_name
+    c.plan_name         = data.plan_name
+    c.promised_download = data.promised_download
+    c.promised_upload   = data.promised_upload
+    c.monthly_cost      = data.monthly_cost
+    c.currency          = data.currency
+    c.sla_threshold_pct = data.sla_threshold_pct
+    if data.contract_start:
+        c.contract_start = datetime.fromisoformat(data.contract_start)
+    if data.contract_end:
+        c.contract_end = datetime.fromisoformat(data.contract_end)
+    db.commit()
+    return {"message": "Contract saved"}
+
+
+@router.get("/contract/compliance", tags=["contract"], summary="Promised vs actual compliance report")
+def get_compliance(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    c = db.query(ISPContract).filter(ISPContract.client_id == client_id).first()
+    if not c:
+        # Return a graceful no-contract state (not a 404, so frontend renders correctly)
+        return {
+            "status": "no_contract",
+            "verdict": "No contract configured",
+            "message": "Add your ISP plan details to start tracking compliance.",
+        }
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(SpeedMeasurement)
+        .filter(SpeedMeasurement.client_id == client_id, SpeedMeasurement.timestamp >= since)
+        .all()
+    )
+    if not rows:
+        return {
+            "status": "no_data",
+            "verdict": f"Contract saved for {c.isp_name} — no speed tests yet",
+            "message": "Run a speed test from the Dashboard to begin tracking.",
+            "promised_download": c.promised_download,
+            "promised_upload": c.promised_upload,
+            "sla_threshold_pct": c.sla_threshold_pct,
+        }
+
+    dls = [r.download_speed for r in rows if r.download_speed]
+    uls = [r.upload_speed   for r in rows if r.upload_speed]
+    avg_dl = round(sum(dls)/len(dls), 2) if dls else 0
+    avg_ul = round(sum(uls)/len(uls), 2) if uls else 0
+    threshold = c.sla_threshold_pct / 100
+    dl_pct   = round((avg_dl / c.promised_download) * 100, 1) if c.promised_download else None
+    ul_pct   = round((avg_ul / c.promised_upload)   * 100, 1) if (c.promised_upload and avg_ul) else None
+    dl_pass  = avg_dl >= c.promised_download * threshold if c.promised_download else True
+    ul_pass  = avg_ul >= c.promised_upload   * threshold if (c.promised_upload and avg_ul) else True
+    overall_pass = dl_pass and (ul_pass if c.promised_upload else True)
+    cost_per_mbps = round(c.monthly_cost / avg_dl, 2) if (c.monthly_cost and avg_dl) else None
+
+    verdict_str = (
+        f"You're getting {dl_pct}% of promised download speed — {'above' if dl_pass else 'below'} SLA threshold."
+        if dl_pct else "Compliance data available."
+    )
+
+    return {
+        "status":             "passing" if overall_pass else "failing",
+        "verdict":            verdict_str,
+        "message":            f"Based on {len(rows)} tests over {days} days.",
+        "promised_download":  c.promised_download,
+        "promised_upload":    c.promised_upload,
+        "actual_download":    avg_dl,
+        "actual_upload":      avg_ul if uls else None,
+        "dl_pct":             dl_pct,
+        "ul_pct":             ul_pct,
+        "dl_pass":            dl_pass,
+        "ul_pass":            ul_pass,
+        "sla_threshold_pct":  c.sla_threshold_pct,
+        "monthly_cost":       c.monthly_cost,
+        "currency":           c.currency,
+        "cost_per_mbps":      cost_per_mbps,
+        "samples":            len(rows),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Network Quality Certificate
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/certificate", tags=["certificate"], summary="Generate a network quality certificate")
+def get_certificate(
+    days: int = Query(default=30, ge=7, le=365),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(SpeedMeasurement)
+        .filter(SpeedMeasurement.client_id == client_id, SpeedMeasurement.timestamp >= since)
+        .order_by(SpeedMeasurement.timestamp.asc())
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not enough data for a certificate. Run speed tests first.")
+
+    dls = [r.download_speed for r in rows if r.download_speed]
+    uls = [r.upload_speed   for r in rows if r.upload_speed]
+    pgs = [r.ping           for r in rows if r.ping]
+    outage_count = sum(1 for r in rows if r.is_outage)
+    uptime_pct   = round((1 - outage_count / len(rows)) * 100, 2)
+    avg_dl       = round(sum(dls)/len(dls), 2) if dls else 0
+    avg_ul       = round(sum(uls)/len(uls), 2) if uls else 0
+    avg_ping     = round(sum(pgs)/len(pgs), 1) if pgs else 0
+    max_dl       = round(max(dls), 2) if dls else 0
+    isp_name     = rows[-1].isp or "Unknown ISP"
+
+    # Score 0-100
+    dl_score   = min(100, (avg_dl / 100) * 100)
+    ul_score   = min(100, (avg_ul / 50)  * 100)
+    ping_score = max(0, 100 - (avg_ping / 2))
+    up_score   = uptime_pct
+    score      = round(dl_score * 0.3 + ul_score * 0.2 + ping_score * 0.25 + up_score * 0.25, 1)
+    grade      = "A+" if score >= 95 else "A" if score >= 90 else "B" if score >= 80 else "C" if score >= 70 else "D" if score >= 60 else "F"
+
+    import hashlib
+    cert_data  = f"{client_id}|{days}|{avg_dl}|{avg_ul}|{avg_ping}|{uptime_pct}"
+    cert_id    = hashlib.sha256(cert_data.encode()).hexdigest()[:16].upper()
+
+    grade_label = {
+        "A+": "Elite Network Quality",
+        "A":  "Excellent Network Quality",
+        "B":  "Good Network Quality",
+        "C":  "Fair Network Quality",
+        "D":  "Below Average Network Quality",
+        "F":  "Poor Network Quality",
+    }.get(grade, "Network Quality Report")
+
+    period_label = (
+        f"{rows[0].timestamp.strftime('%b %d')} – {rows[-1].timestamp.strftime('%b %d, %Y')}"
+    )
+
+    metrics = [
+        {"label": "Avg Download", "value": f"{avg_dl} Mbps"},
+        {"label": "Avg Upload",   "value": f"{avg_ul} Mbps"},
+        {"label": "Avg Ping",     "value": f"{avg_ping} ms"},
+        {"label": "Uptime",       "value": f"{uptime_pct}%"},
+    ]
+
+    criteria = [
+        {
+            "name":   "Download Speed",
+            "detail": f"{avg_dl} Mbps average over {days} days",
+            "pass":   avg_dl >= 25,
+            "grade":  "A" if avg_dl >= 100 else "B" if avg_dl >= 50 else "C" if avg_dl >= 25 else "D",
+        },
+        {
+            "name":   "Upload Speed",
+            "detail": f"{avg_ul} Mbps average",
+            "pass":   avg_ul >= 5,
+            "grade":  "A" if avg_ul >= 20 else "B" if avg_ul >= 10 else "C" if avg_ul >= 5 else "D",
+        },
+        {
+            "name":   "Latency",
+            "detail": f"{avg_ping} ms average ping",
+            "pass":   avg_ping <= 80,
+            "grade":  "A" if avg_ping <= 20 else "B" if avg_ping <= 50 else "C" if avg_ping <= 80 else "D",
+        },
+        {
+            "name":   "Reliability",
+            "detail": f"{uptime_pct}% uptime, {outage_count} outage event(s)",
+            "pass":   uptime_pct >= 99,
+            "grade":  "A" if uptime_pct >= 99.9 else "B" if uptime_pct >= 99 else "C" if uptime_pct >= 95 else "D",
+        },
+    ]
+
+    return {
+        "grade":         grade,
+        "score":         score,
+        "title":         grade_label,
+        "subtitle":      f"Based on {len(rows)} speed tests over {days} days",
+        "issued_at":     datetime.utcnow().strftime("%B %d, %Y"),
+        "period":        period_label,
+        "sample_count":  len(rows),
+        "certificate_id": cert_id,
+        "isp":           isp_name,
+        "metrics":       metrics,
+        "criteria":      criteria,
+        "verdict": (
+            "Excellent — suitable for all professional and home use cases."
+            if score >= 90 else
+            "Good — suitable for most remote work and streaming needs."
+            if score >= 75 else
+            "Fair — may struggle with demanding tasks like 4K or large uploads."
+            if score >= 60 else
+            "Poor — recommend contacting your ISP or considering a plan upgrade."
+        ),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Time-of-Day Best Time Recommender
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/best-time", tags=["analytics"], summary="Best time-of-day for internet activity")
+def get_best_time(
+    days: int = Query(default=30, ge=7, le=365),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(SpeedMeasurement)
+        .filter(SpeedMeasurement.client_id == client_id, SpeedMeasurement.timestamp >= since)
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not enough data. Run auto-tests for a few days first.")
+
+    from collections import defaultdict
+    by_hour_dl: dict = defaultdict(list)
+    by_hour_ul: dict = defaultdict(list)
+    by_hour_pg: dict = defaultdict(list)
+    by_dow:     dict = defaultdict(list)
+    for r in rows:
+        h   = r.timestamp.hour
+        dow = r.timestamp.weekday()
+        if r.download_speed:
+            by_hour_dl[h].append(r.download_speed)
+            by_dow[dow].append(r.download_speed)
+        if r.upload_speed:
+            by_hour_ul[h].append(r.upload_speed)
+        if r.ping:
+            by_hour_pg[h].append(r.ping)
+
+    # Build hourly list covering all 24 hours (None if no data)
+    hourly = []
+    for h in range(24):
+        dl_list = by_hour_dl.get(h, [])
+        ul_list = by_hour_ul.get(h, [])
+        pg_list = by_hour_pg.get(h, [])
+        hourly.append({
+            "hour":         h,
+            "avg_download": round(sum(dl_list)/len(dl_list), 1) if dl_list else None,
+            "avg_upload":   round(sum(ul_list)/len(ul_list), 1) if ul_list else None,
+            "avg_ping":     round(sum(pg_list)/len(pg_list), 1) if pg_list else None,
+            "sample_count": len(dl_list),
+        })
+
+    DAYS_LABELS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    daily = [
+        {"dow": d, "label": DAYS_LABELS[d], "avg_download": round(sum(v)/len(v), 1), "samples": len(v)}
+        for d, v in sorted(by_dow.items())
+    ]
+
+    hours_with_data = [h for h in hourly if h["avg_download"] is not None]
+    best_hour  = max(hours_with_data, key=lambda x: x["avg_download"])["hour"] if hours_with_data else None
+    worst_hour = min(hours_with_data, key=lambda x: x["avg_download"])["hour"] if hours_with_data else None
+
+    best_day = max(daily, key=lambda x: x["avg_download"]) if daily else None
+
+    # Best window description
+    best_window = None
+    if best_hour is not None:
+        best_entry = hourly[best_hour]
+        best_window = {
+            "label": f"Best time to use internet: {best_hour:02d}:00",
+            "description": (
+                f"Average {best_entry['avg_download']} Mbps download at {best_hour:02d}:00"
+                + (f" · avoid {worst_hour:02d}:00 ({hourly[worst_hour]['avg_download']} Mbps)" if worst_hour is not None and worst_hour != best_hour else "")
+                + (f" · best day: {best_day['label']}" if best_day else "")
+            ),
+        }
+
+    # Activity recommendations
+    recommendations = []
+    if hours_with_data:
+        avg_dl_all = sum(h["avg_download"] for h in hours_with_data) / len(hours_with_data)
+        activities = [
+            ("4K Streaming",     25,  3),
+            ("Video Calls",      5,   1),
+            ("Large Downloads",  20,  0),
+            ("Online Gaming",    3,   3),
+            ("Cloud Backup",     10,  2),
+        ]
+        for activity, req_dl, req_ul in activities:
+            feasible = avg_dl_all >= req_dl
+            best_hrs = [h["hour"] for h in hours_with_data if (h["avg_download"] or 0) >= req_dl]
+            recommendations.append({
+                "activity":   activity,
+                "feasible":   feasible,
+                "best_hours": f"Best at: {', '.join(f'{h:02d}:00' for h in best_hrs[:3])}" if best_hrs else "No suitable hours found",
+                "note":       f"Needs {req_dl} Mbps — your avg is {avg_dl_all:.1f} Mbps" if not feasible else "",
+            })
+
+    return {
+        "period_days":   days,
+        "samples":       len(rows),
+        "hourly":        hourly,
+        "daily":         daily,
+        "best_download_hour":  best_hour,
+        "worst_download_hour": worst_hour,
+        "best_window":   best_window,
+        "recommendations": recommendations,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Multi-Device Aggregator
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/devices/link", tags=["devices"], summary="Join or create a device group")
+def link_device(
+    data: DeviceLinkIn,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    import uuid as _uuid
+    group_id = data.group_id or str(_uuid.uuid4())
+    # Check if this device is already in any group (mark first as primary)
+    is_primary = not db.query(DeviceGroup).filter(DeviceGroup.client_id == client_id).first()
+    existing = db.query(DeviceGroup).filter(
+        DeviceGroup.group_id == group_id,
+        DeviceGroup.client_id == client_id,
+    ).first()
+    if not existing:
+        row = DeviceGroup(
+            group_id=group_id, client_id=client_id,
+            label=data.label, is_primary=is_primary,
+        )
+        db.add(row)
+        db.commit()
+    return {"message": "Device linked", "group_id": group_id}
+
+
+@router.delete("/devices/link/{group_id}", tags=["devices"], summary="Leave device group")
+def unlink_device(
+    group_id: str,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    db.query(DeviceGroup).filter(
+        DeviceGroup.group_id == group_id,
+        DeviceGroup.client_id == client_id,
+    ).delete()
+    db.commit()
+    return {"message": "Left group"}
+
+
+@router.get("/devices/compare", tags=["devices"], summary="Compare all devices in a group")
+def compare_devices(
+    group_id: Optional[str] = Query(default=None),
+    days: int = Query(default=7, ge=1, le=90),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    # If no group_id given, use the first group this device belongs to
+    if not group_id:
+        my_group = db.query(DeviceGroup).filter(DeviceGroup.client_id == client_id).first()
+        if not my_group:
+            return {"devices": [], "message": "Not in any device group yet."}
+        group_id = my_group.group_id
+
+    members = db.query(DeviceGroup).filter(DeviceGroup.group_id == group_id).all()
+    if not members:
+        return {"devices": [], "message": "Group not found or empty."}
+
+    since = datetime.utcnow() - timedelta(days=days)
+    result = []
+    for m in members:
+        rows = (
+            db.query(SpeedMeasurement)
+            .filter(SpeedMeasurement.client_id == m.client_id, SpeedMeasurement.timestamp >= since)
+            .all()
+        )
+        dls = [r.download_speed for r in rows if r.download_speed]
+        uls = [r.upload_speed   for r in rows if r.upload_speed]
+        pgs = [r.ping           for r in rows if r.ping]
+        result.append({
+            "client_id":    m.client_id,
+            "label":        m.label,
+            "is_primary":   m.is_primary,
+            "is_me":        m.client_id == client_id,
+            "sample_count": len(rows),
+            "avg_download": round(sum(dls)/len(dls), 1) if dls else None,
+            "avg_upload":   round(sum(uls)/len(uls), 1) if uls else None,
+            "avg_ping":     round(sum(pgs)/len(pgs), 1) if pgs else None,
+        })
+    return {"group_id": group_id, "period_days": days, "devices": result}
+
+
+@router.get("/devices/nearby", tags=["devices"], summary="Discover devices on the same local network")
+def nearby_devices(
+    request: Request,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """
+    Detects other devices on the same WiFi/LAN by comparing public IP addresses.
+    All devices behind the same router share one public IP, so this identifies
+    devices on the same network without requiring Bluetooth or mDNS.
+
+    Calling this endpoint also registers (or refreshes) this device as 'present'
+    so that other devices on the network can discover it.
+    """
+    from ..models.measurement import UserLocation
+
+    # Resolve client's public IP (behind Fly proxy the real IP is in X-Forwarded-For)
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host or "unknown")
+
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+
+    # Refresh / upsert presence record: delete stale then insert fresh
+    db.query(UserLocation).filter(
+        UserLocation.client_id == client_id,
+        UserLocation.is_active == True,
+    ).delete()
+    presence = UserLocation(
+        client_id=client_id,
+        label="__nearby__",
+        ip_hint=client_ip,
+        is_active=True,
+    )
+    db.add(presence)
+    db.commit()
+
+    # Find other devices with the same IP seen in the last 10 minutes
+    cutoff = datetime.utcnow() - timedelta(minutes=10)
+    others = (
+        db.query(UserLocation)
+        .filter(
+            UserLocation.ip_hint == client_ip,
+            UserLocation.client_id != client_id,
+            UserLocation.is_active == True,
+            UserLocation.created_at >= cutoff,
+            UserLocation.label == "__nearby__",
+        )
+        .all()
+    )
+
+    # Find out which ones are already in a shared group with us
+    my_group_ids = {
+        r.group_id for r in db.query(DeviceGroup).filter(DeviceGroup.client_id == client_id).all()
+    }
+
+    nearby = []
+    for o in others:
+        already_linked = db.query(DeviceGroup).filter(
+            DeviceGroup.client_id == o.client_id,
+            DeviceGroup.group_id.in_(my_group_ids),
+        ).first() is not None
+        # Get a friendly label from the DeviceGroup if available
+        dg = db.query(DeviceGroup).filter(DeviceGroup.client_id == o.client_id).first()
+        nearby.append({
+            "client_id":      o.client_id,
+            "label":          dg.label if dg else "Unknown Device",
+            "already_linked": already_linked,
+            "last_seen":      o.created_at.isoformat(),
+        })
+
+    return {
+        "nearby":    nearby,
+        "total":     len(nearby),
+        "my_ip":     client_ip,  # Returned so frontend can show "same network" confirmation
+    }
+
+
+@router.get("/devices/my-groups", tags=["devices"], summary="List groups this device belongs to")
+def my_groups(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    rows = db.query(DeviceGroup).filter(DeviceGroup.client_id == client_id).all()
+    groups = [
+        {
+            "id":         r.id,
+            "group_id":   r.group_id,
+            "label":      r.label,
+            "is_primary": r.is_primary,
+            "joined_at":  r.joined_at.isoformat() if r.joined_at else None,
+        }
+        for r in rows
+    ]
+    return {"groups": groups}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. DNS Performance Monitor
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/dns-test", tags=["diagnostics"], summary="Test response time of popular DNS resolvers")
+async def dns_test(
+    host: str = Query(default="example.com"),
+):
+    import asyncio as _aio, socket as _socket, time as _time
+
+    RESOLVERS = [
+        {"name": "Cloudflare",  "ip": "1.1.1.1"},
+        {"name": "Google",      "ip": "8.8.8.8"},
+        {"name": "Quad9",       "ip": "9.9.9.9"},
+        {"name": "OpenDNS",     "ip": "208.67.222.222"},
+        {"name": "Cloudflare2", "ip": "1.0.0.1"},
+        {"name": "Google2",     "ip": "8.8.4.4"},
+    ]
+
+    async def test_resolver(name: str, ip: str) -> dict:
+        loop = _aio.get_event_loop()
+        try:
+            t0 = _time.perf_counter()
+            await loop.run_in_executor(None, lambda: _socket.getaddrinfo(host, None, _socket.AF_INET))
+            ms = round((_time.perf_counter() - t0) * 1000, 1)
+            return {"name": name, "ip": ip, "latency_ms": ms, "ok": True}
+        except Exception as e:
+            return {"name": name, "ip": ip, "latency_ms": None, "ok": False, "error": str(e)}
+
+    results = await _aio.gather(*[test_resolver(r["name"], r["ip"]) for r in RESOLVERS])
+    results = sorted(results, key=lambda x: x["latency_ms"] if x["latency_ms"] is not None else 9999)
+    best = next((r for r in results if r["ok"]), None)
+    return {
+        "host":       host,
+        "tested_at":  datetime.utcnow().isoformat(),
+        "results":    list(results),
+        "fastest":    best,
+        "recommendation": (
+            f"Use {best['name']} DNS ({best['ip']}) — fastest at {best['latency_ms']} ms."
+            if best else "All resolvers failed."
+        ),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. ISP Complaint Letter Generator
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/complaint-letter", tags=["contract"], summary="Generate an ISP complaint letter from your data")
+def generate_complaint_letter(
+    days:           int = Query(default=30, ge=7, le=90),
+    your_name:      str = Query(default=""),
+    your_address:   str = Query(default=""),
+    isp_name:       str = Query(default=""),
+    account_number: str = Query(default=""),
+    issue_start:    str = Query(default=""),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+
+    contract = db.query(ISPContract).filter(ISPContract.client_id == client_id).first()
+    since = datetime.utcnow() - timedelta(days=days)
+    rows  = (
+        db.query(SpeedMeasurement)
+        .filter(SpeedMeasurement.client_id == client_id, SpeedMeasurement.timestamp >= since)
+        .all()
+    )
+
+    dls    = [r.download_speed for r in rows if r.download_speed]
+    avg_dl = round(sum(dls)/len(dls), 1) if dls else 0
+    outages = sum(1 for r in rows if r.is_outage)
+
+    isp          = isp_name or (contract.isp_name if contract else (rows[-1].isp if rows else "My ISP"))
+    promised_dl  = contract.promised_download if contract else None
+    plan_name    = contract.plan_name       if contract else None
+    cost         = contract.monthly_cost    if contract else None
+    currency     = contract.currency        if contract else "USD"
+    sender_name  = your_name    or "[Your Full Name]"
+    sender_addr  = your_address or "[Your Address]"
+    acct_no      = account_number or "[Your Account Number]"
+    issue_period = issue_start or start_date
+
+    delivery_str = (
+        f"{round((avg_dl / promised_dl)*100)}% of the contracted {promised_dl} Mbps"
+        if promised_dl else f"{avg_dl} Mbps on average"
+    )
+
+    today    = datetime.utcnow().strftime("%B %d, %Y")
+    end_date = datetime.utcnow().strftime("%B %d, %Y")
+    start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%B %d, %Y")
+
+    letter = f"""{today}
+
+Customer Services Department
+{isp}
+
+Subject: Formal Complaint — Persistent Failure to Deliver Contracted Internet Speeds
+
+Dear {isp} Customer Services,
+
+I am writing to formally lodge a complaint regarding the consistent failure to deliver the internet speeds specified in my service agreement{f" ({plan_name})" if plan_name else ""}.
+
+CONTRACTED SERVICE
+{"Plan: " + plan_name + chr(10) if plan_name else ""}Promised download speed: {f"{promised_dl} Mbps" if promised_dl else "as per contract"}
+{"Monthly cost: " + currency + " " + str(cost) + chr(10) if cost else ""}
+
+MEASURED PERFORMANCE ({start_date} – {end_date})
+I have conducted {len(rows)} independent speed tests over the past {days} days using the Internet Stability Tracker monitoring tool. The results are as follows:
+
+- Average download speed: {avg_dl} Mbps ({delivery_str})
+- Number of outage events recorded: {outages}
+- Monitoring period: {days} days
+
+{"This represents a significant shortfall from the contracted speed, amounting to a failure to deliver the agreed service." if promised_dl and avg_dl < promised_dl * 0.8 else "While speeds have occasionally met the contracted level, persistent variability has impacted the reliability of my connection."}
+
+REQUESTED RESOLUTION
+I respectfully request that you:
+
+1. Investigate the cause of the persistent underperformance at my address.
+2. Provide a written explanation within 14 days of the root cause and planned remediation.
+3. Apply a pro-rata credit to my account for the period of underperformance.
+4. If the issue cannot be resolved within 30 days, allow me to terminate my contract without early-termination penalties.
+
+I have retained all speed test records as evidence and am prepared to submit them to the relevant telecommunications regulator if a satisfactory resolution is not reached.
+
+Please respond in writing within 14 days.
+
+Yours sincerely,
+
+{sender_name}
+{acct_no}
+{sender_addr}
+[Your Email / Phone]
+
+---
+Evidence reference: {len(rows)} speed tests, {issue_period} to {end_date}.
+Generated by Internet Stability Tracker — https://backend-cold-butterfly-9535.fly.dev
+"""
+
+    sections = [
+        {"title": "Header",            "content": f"{today}\n\nCustomer Services Department\n{isp}"},
+        {"title": "Subject",           "content": f"Formal Complaint — Persistent Failure to Deliver Contracted Internet Speeds"},
+        {"title": "Performance Data",  "content": f"Average download: {avg_dl} Mbps over {len(rows)} tests in {days} days. Outages: {outages}."},
+        {"title": "Requested Action",  "content": "Investigation, written explanation, account credit, and option to cancel without penalty."},
+    ]
+
+    severity = (
+        "high"   if (promised_dl and avg_dl < promised_dl * 0.5) or outages >= 5
+        else "medium" if (promised_dl and avg_dl < promised_dl * 0.8) or outages >= 2
+        else "low"
+    )
+
+    evidence = [
+        {"label": "Measurement period",    "value": f"{start_date} – {end_date}"},
+        {"label": "Total speed tests",     "value": str(len(rows))},
+        {"label": "Avg download speed",    "value": f"{avg_dl} Mbps"},
+        {"label": "Promised download",     "value": f"{promised_dl} Mbps" if promised_dl else "Not on file"},
+        {"label": "Speed delivery",        "value": f"{delivery_str}"},
+        {"label": "Outage events",         "value": str(outages)},
+    ]
+    if cost:
+        evidence.append({"label": "Monthly cost", "value": f"{currency} {cost}"})
+
+    return {
+        "letter_text":       letter,
+        "sections":          sections,
+        "evidence":          evidence,
+        "severity":          severity,
+        "isp":               isp,
+        "period_days":       days,
+        "tests":             len(rows),
+        "avg_download":      avg_dl,
+        "promised_download": promised_dl,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Scheduled Speed Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/schedules", tags=["schedules"], summary="List speed test schedules")
+def list_schedules(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    rows = db.query(TestSchedule).filter(TestSchedule.client_id == client_id).all()
+    schedules = [
+        {
+            "id": r.id, "label": r.label, "hours": r.hours, "days": r.days,
+            "enabled": r.enabled, "burst_count": r.burst_count,
+            "last_run": r.last_run.isoformat() if r.last_run else None,
+        }
+        for r in rows
+    ]
+    return {"schedules": schedules}
+
+
+@router.post("/schedules", tags=["schedules"], summary="Create a speed test schedule")
+def create_schedule(
+    data: ScheduleIn,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    count = db.query(TestSchedule).filter(TestSchedule.client_id == client_id).count()
+    if count >= 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 schedules per device.")
+    s = TestSchedule(
+        client_id=client_id, label=data.label,
+        hours=data.hours, days=data.days,
+        enabled=data.enabled, burst_count=max(1, min(5, data.burst_count)),
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return {"id": s.id, "message": "Schedule created"}
+
+
+@router.put("/schedules/{schedule_id}", tags=["schedules"], summary="Update a schedule")
+def update_schedule(
+    schedule_id: int,
+    data: ScheduleIn,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    s = db.query(TestSchedule).filter(
+        TestSchedule.id == schedule_id,
+        TestSchedule.client_id == client_id,
+    ).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    s.label = data.label; s.hours = data.hours; s.days = data.days
+    s.enabled = data.enabled; s.burst_count = max(1, min(5, data.burst_count))
+    db.commit()
+    return {"message": "Schedule updated"}
+
+
+@router.delete("/schedules/{schedule_id}", tags=["schedules"], summary="Delete a schedule")
+def delete_schedule(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    db.query(TestSchedule).filter(
+        TestSchedule.id == schedule_id,
+        TestSchedule.client_id == client_id,
+    ).delete()
+    db.commit()
+    return {"message": "Schedule deleted"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Packet Loss & Jitter Monitor
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/packet-loss/run", tags=["diagnostics"], summary="Run a packet loss and jitter test")
+async def run_packet_loss(
+    target: str = Query(default="1.1.1.1"),
+    count:  int = Query(default=10, ge=4, le=30),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    """
+    Measures RTT and packet loss using TCP probes (port 443 then 80).
+    Does NOT use ICMP ping — no root/CAP_NET_RAW required.
+    Each probe opens and immediately closes a TCP connection; the time
+    is equivalent to network round-trip + TCP handshake overhead.
+    """
+    import asyncio as _aio, socket as _socket, time as _time
+
+    # Resolve hostname once
+    try:
+        resolved_ip = (await _aio.get_event_loop().run_in_executor(
+            None, lambda: _socket.getaddrinfo(target, None, _socket.AF_INET)[0][4][0]
+        ))
+    except Exception:
+        resolved_ip = target
+
+    async def tcp_probe(host: str) -> Optional[float]:
+        """TCP connect to port 443, fallback 80. Returns RTT in ms or None."""
+        for port in (443, 80, 53):
+            try:
+                t0 = _time.perf_counter()
+                _, writer = await _aio.wait_for(
+                    _aio.open_connection(host, port), timeout=2.0
+                )
+                ms = round((_time.perf_counter() - t0) * 1000, 1)
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return ms
+            except (_aio.TimeoutError, ConnectionRefusedError):
+                continue
+            except Exception:
+                continue
+        return None
+
+    # Run probes sequentially (not all parallel) to better simulate real traffic
+    times: list = []
+    for _ in range(count):
+        ms = await tcp_probe(resolved_ip)
+        times.append(ms)
+        await _aio.sleep(0.15)   # 150 ms between probes
+
+    valid    = [t for t in times if t is not None]
+    lost     = count - len(valid)
+    loss_pct = round((lost / count) * 100, 1)
+
+    avg_ms  = round(sum(valid) / len(valid), 1) if valid else None
+    min_ms  = round(min(valid), 1)              if valid else None
+    max_ms  = round(max(valid), 1)              if valid else None
+    jitter  = None
+    if len(valid) >= 2:
+        diffs  = [abs(valid[i + 1] - valid[i]) for i in range(len(valid) - 1)]
+        jitter = round(sum(diffs) / len(diffs), 1)
+
+    reading = PacketLossReading(
+        client_id=client_id or "anonymous",
+        loss_pct=loss_pct,
+        jitter_ms=jitter,
+        avg_ping_ms=avg_ms,
+        target=target,
+    )
+    db.add(reading)
+    db.commit()
+
+    quality = (
+        "Excellent" if loss_pct == 0  and (jitter or 0) < 5
+        else "Good" if loss_pct < 1   and (jitter or 0) < 15
+        else "Fair" if loss_pct < 5   and (jitter or 0) < 30
+        else "Poor"
+    )
+
+    return {
+        "target":      target,
+        "sent":        count,
+        "received":    len(valid),
+        "lost":        lost,
+        "loss_pct":    loss_pct,
+        "avg_ping_ms": avg_ms,
+        "min_ping_ms": min_ms,
+        "max_ping_ms": max_ms,
+        "jitter_ms":   jitter,
+        "quality":     quality,
+        "suitable_for": {
+            "video_calls": loss_pct < 1   and (avg_ms or 999) < 150,
+            "gaming":      loss_pct < 0.5 and (avg_ms or 999) < 50  and (jitter or 999) < 10,
+            "voip":        loss_pct < 1   and (jitter or 999) < 20,
+            "streaming":   loss_pct < 2,
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/packet-loss/history", tags=["diagnostics"], summary="Recent packet loss history")
+def packet_loss_history(
+    limit: int = Query(default=48, ge=1, le=200),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    rows = (
+        db.query(PacketLossReading)
+        .filter(PacketLossReading.client_id == client_id)
+        .order_by(PacketLossReading.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "timestamp":  r.timestamp.isoformat(),
+            "loss_pct":   r.loss_pct,
+            "jitter_ms":  r.jitter_ms,
+            "avg_ping_ms": r.avg_ping_ms,
+            "target":     r.target,
+        }
+        for r in reversed(rows)
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Neighborhood Outage Clustering
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/neighborhood-outages", tags=["outages"], summary="Geo-clustered community outage reports")
+def neighborhood_outages(
+    lat:    float = Query(..., description="Your latitude"),
+    lon:    float = Query(..., description="Your longitude"),
+    radius: float = Query(default=50.0, description="Radius in km"),
+    hours:  int   = Query(default=24, ge=1, le=168),
+    db: Session = Depends(get_db),
+):
+    import math
+
+    since = datetime.utcnow() - timedelta(hours=hours)
+    reports = (
+        db.query(CommunityReport)
+        .filter(
+            CommunityReport.timestamp >= since,
+            CommunityReport.latitude.isnot(None),
+            CommunityReport.longitude.isnot(None),
+        )
+        .all()
+    )
+
+    def haversine(lat1, lon1, lat2, lon2) -> float:
+        R = 6371
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlam = math.radians(lon2 - lon1)
+        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
+        return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+    nearby = []
+    for r in reports:
+        dist = haversine(lat, lon, r.latitude, r.longitude)
+        if dist <= radius:
+            nearby.append({
+                "id":        r.id,
+                "isp":       r.isp,
+                "issue_type": r.issue_type,
+                "location":  r.location,
+                "latitude":  r.latitude,
+                "longitude": r.longitude,
+                "distance_km": round(dist, 1),
+                "timestamp": r.timestamp.isoformat(),
+            })
+
+    nearby.sort(key=lambda x: x["distance_km"])
+
+    # Cluster by ISP
+    from collections import Counter
+    isp_counts = Counter(r["isp"] for r in nearby if r["isp"])
+    issue_counts = Counter(r["issue_type"] for r in nearby if r["issue_type"])
+
+    verdict = "local"
+    if nearby:
+        top_isp = isp_counts.most_common(1)[0]
+        if top_isp[1] >= 3:
+            verdict = "isp_wide"
+        elif len(nearby) >= 5:
+            verdict = "area_wide"
+
+    return {
+        "your_location":    {"lat": lat, "lon": lon},
+        "radius_km":        radius,
+        "hours":            hours,
+        "total_reports":    len(nearby),
+        "verdict":          verdict,
+        "verdict_label": {
+            "local":     "Likely a local issue — few nearby reports.",
+            "area_wide": "Area-wide issue — multiple nearby reports across ISPs.",
+            "isp_wide":  f"ISP-wide issue — concentrated reports for {isp_counts.most_common(1)[0][0] if isp_counts else 'your ISP'}.",
+        }.get(verdict, "Unknown"),
+        "top_isps":         [{"isp": k, "count": v} for k, v in isp_counts.most_common(5)],
+        "issue_types":      [{"type": k, "count": v} for k, v in issue_counts.most_common()],
+        "reports":          nearby[:50],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. Work From Home Readiness Score
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/wfh-score", tags=["analytics"], summary="Work-from-home readiness score")
+def get_wfh_score(
+    days: int = Query(default=7, ge=1, le=30),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    since = datetime.utcnow() - timedelta(days=days)
+    rows  = (
+        db.query(SpeedMeasurement)
+        .filter(SpeedMeasurement.client_id == client_id, SpeedMeasurement.timestamp >= since)
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No speed tests found. Run a test first.")
+
+    dls  = [r.download_speed for r in rows if r.download_speed]
+    uls  = [r.upload_speed   for r in rows if r.upload_speed]
+    pgs  = [r.ping           for r in rows if r.ping]
+    outs = sum(1 for r in rows if r.is_outage)
+
+    avg_dl   = sum(dls)/len(dls) if dls else 0
+    avg_ul   = sum(uls)/len(uls) if uls else 0
+    avg_ping = sum(pgs)/len(pgs) if pgs else 999
+    uptime   = round((1 - outs/len(rows)) * 100, 1)
+
+    # Jitter estimate from ping variance
+    if len(pgs) >= 2:
+        mean_pg = sum(pgs)/len(pgs)
+        jitter  = round(sum(abs(p - mean_pg) for p in pgs) / len(pgs), 1)
+    else:
+        jitter = 20.0  # assume moderate
+
+    WFH_APPS = [
+        {
+            "name": "Zoom 1080p",
+            "icon": "videocam",
+            "req_dl": 3.8, "req_ul": 3.8, "req_ping": 150, "req_jitter": 30, "req_loss": 1.0,
+            "color": "#2D8CFF",
+        },
+        {
+            "name": "Microsoft Teams",
+            "icon": "groups",
+            "req_dl": 4.0, "req_ul": 1.5, "req_ping": 100, "req_jitter": 30, "req_loss": 1.0,
+            "color": "#6264A7",
+        },
+        {
+            "name": "Google Meet",
+            "icon": "video_call",
+            "req_dl": 3.2, "req_ul": 3.2, "req_ping": 150, "req_jitter": 40, "req_loss": 2.0,
+            "color": "#00897B",
+        },
+        {
+            "name": "4K Streaming",
+            "icon": "tv",
+            "req_dl": 25.0, "req_ul": 0, "req_ping": 500, "req_jitter": 100, "req_loss": 5.0,
+            "color": "#E53935",
+        },
+        {
+            "name": "Online Gaming",
+            "icon": "sports_esports",
+            "req_dl": 3.0, "req_ul": 1.0, "req_ping": 50, "req_jitter": 10, "req_loss": 0.5,
+            "color": "#43A047",
+        },
+        {
+            "name": "Large File Backup",
+            "icon": "cloud_upload",
+            "req_dl": 0, "req_ul": 10.0, "req_ping": 500, "req_jitter": 200, "req_loss": 5.0,
+            "color": "#FB8C00",
+        },
+        {
+            "name": "VoIP / Calls",
+            "icon": "phone",
+            "req_dl": 0.1, "req_ul": 0.1, "req_ping": 150, "req_jitter": 20, "req_loss": 1.0,
+            "color": "#8E24AA",
+        },
+        {
+            "name": "Slack / Chat",
+            "icon": "chat",
+            "req_dl": 0.5, "req_ul": 0.5, "req_ping": 300, "req_jitter": 50, "req_loss": 3.0,
+            "color": "#4A154B",
+        },
+    ]
+
+    app_results = []
+    for app in WFH_APPS:
+        requirements = []
+        if app["req_dl"] > 0:
+            requirements.append({
+                "metric":   "Download",
+                "actual":   f"{avg_dl:.1f} Mbps",
+                "required": f"{app['req_dl']} Mbps",
+                "pass":     avg_dl >= app["req_dl"],
+            })
+        if app["req_ul"] > 0:
+            requirements.append({
+                "metric":   "Upload",
+                "actual":   f"{avg_ul:.1f} Mbps",
+                "required": f"{app['req_ul']} Mbps",
+                "pass":     avg_ul >= app["req_ul"],
+            })
+        if app["req_ping"] < 400:
+            requirements.append({
+                "metric":   "Ping",
+                "actual":   f"{avg_ping:.0f} ms",
+                "required": f"< {app['req_ping']} ms",
+                "pass":     avg_ping <= app["req_ping"],
+            })
+        if app["req_jitter"] < 100:
+            requirements.append({
+                "metric":   "Jitter",
+                "actual":   f"{jitter:.1f} ms",
+                "required": f"< {app['req_jitter']} ms",
+                "pass":     jitter <= app["req_jitter"],
+            })
+
+        passed = sum(1 for r in requirements if r["pass"])
+        total  = len(requirements)
+        status = "pass" if passed == total else "warn" if passed >= total * 0.5 else "fail"
+        app_results.append({
+            "name":         app["name"],
+            "status":       status,
+            "requirements": requirements,
+            "note": (
+                "Excellent!" if status == "pass"
+                else "Marginal — may have issues in poor conditions."
+                if status == "warn"
+                else "Does not meet minimum requirements."
+            ),
+        })
+
+    pass_count = sum(1 for a in app_results if a["status"] == "pass")
+    warn_count = sum(1 for a in app_results if a["status"] == "warn")
+    fail_count = sum(1 for a in app_results if a["status"] == "fail")
+    overall_score = round((pass_count / len(app_results)) * 100)
+
+    recommendations = []
+    if avg_dl < 10:
+        recommendations.append("Your download speed is below 10 Mbps — consider upgrading your plan for smooth video calls.")
+    if avg_ul < 5:
+        recommendations.append("Upload speed is low — large file transfers and screen sharing may be slow.")
+    if avg_ping > 100:
+        recommendations.append("High latency detected — try connecting via Ethernet instead of Wi-Fi.")
+    if uptime < 95:
+        recommendations.append(f"Connection uptime is {uptime}% — instability may disrupt live meetings.")
+
+    return {
+        "overall_score": overall_score,
+        "current": {
+            "download_mbps": round(avg_dl, 1),
+            "upload_mbps":   round(avg_ul, 1),
+            "ping_ms":       round(avg_ping, 1),
+            "uptime_pct":    uptime,
+        },
+        "summary": {
+            "pass": pass_count,
+            "warn": warn_count,
+            "fail": fail_count,
+        },
+        "apps":            app_results,
+        "recommendations": recommendations,
+        "period_days":     days,
+        "tests":           len(rows),
+    }
