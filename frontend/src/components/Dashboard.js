@@ -31,6 +31,7 @@ import {
   Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine, Brush
 } from 'recharts';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import { Link } from 'react-router-dom';
 import { getRecentMeasurements, getISPComparison, runTestNow, getStats, getAlerts, getNetworkUsage, clearMeasurements, getQualityScore, getAIInsights, getOutageConfidence } from '../services/api';
 
 /** Parse a naive UTC timestamp string from the backend (no Z suffix) as UTC */
@@ -1017,11 +1018,17 @@ function Dashboard() {
                 <Chip
                   label={lastTestResult.is_outage ? 'Outage' : 'OK'}
                   size="small"
+                  component={Link}
+                  to="/certificate"
+                  clickable
                   sx={{
                     fontWeight: 800, fontSize: 12,
                     bgcolor: lastTestResult.is_outage ? 'rgba(239,83,80,0.18)' : 'rgba(102,187,106,0.18)',
                     color: lastTestResult.is_outage ? '#EF5350' : '#66BB6A',
                     border: `1px solid ${lastTestResult.is_outage ? 'rgba(239,83,80,0.4)' : 'rgba(102,187,106,0.4)'}`,
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                    '&:hover': { opacity: 0.85 },
                   }}
                 />
               </Box>

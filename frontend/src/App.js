@@ -163,13 +163,19 @@ function NavBar() {
   return (
     <>
       <AppBar
-        position="sticky"
+        position="fixed"
         elevation={0}
         sx={{
-          background: 'linear-gradient(135deg, #000000 0%, #0a0800 60%, #111000 100%)',
-          borderBottom: '1.5px solid rgba(240,194,75,0.45)',
-          backdropFilter: 'blur(10px)',
-          boxShadow: '0 4px 32px rgba(240,194,75,0.12)',
+          top: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'calc(100% - 32px)',
+          maxWidth: 1400,
+          borderRadius: 3,
+          background: 'linear-gradient(135deg, rgba(0,0,0,0.92) 0%, rgba(10,8,0,0.92) 60%, rgba(17,16,0,0.92) 100%)',
+          border: '1.5px solid rgba(240,194,75,0.45)',
+          backdropFilter: 'blur(16px)',
+          boxShadow: '0 4px 32px rgba(240,194,75,0.14), 0 2px 16px rgba(0,0,0,0.6)',
         }}
       >
         <Toolbar sx={{ px: { xs: 2, md: 4 } }}>
@@ -219,8 +225,8 @@ function NavBar() {
           </Tooltip>
 
           {/* Hamburger always visible — opens full drawer */}
-          <IconButton color="inherit" onClick={() => setDrawerOpen(true)} edge="end"
-            sx={{ mr: isMobile ? 0 : 0.5 }}>
+          <IconButton onClick={() => setDrawerOpen(true)} edge="end"
+            sx={{ mr: isMobile ? 0 : 0.5, color: '#fff' }}>
             <MenuIcon />
           </IconButton>
 
@@ -354,7 +360,7 @@ function App() {
           }}
         />
         <NavBar />
-        <Box sx={{ position: 'relative', zIndex: 1, pb: 6 }}>
+        <Box sx={{ position: 'relative', zIndex: 1, pt: '76px', pb: 6 }}>
           <Routes>
             <Route path="/"           element={<Dashboard />} />
             <Route path="/status"     element={<StatusPage />} />
