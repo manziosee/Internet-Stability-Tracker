@@ -4,7 +4,6 @@
 
 **Community-driven network monitoring — real-time speed, outage detection, AI insights, ML predictions, and security analysis**
 
-[![Deploy to Fly.io](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/deploy-fly.yml/badge.svg)](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/deploy-fly.yml)
 [![Build Docker](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/docker-image.yml/badge.svg)](https://github.com/manziosee/Internet-Stability-Tracker/actions/workflows/docker-image.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
@@ -12,7 +11,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Fly.io](https://img.shields.io/badge/Fly.io-deployed-8B5CF6?logo=fly.io&logoColor=white)](https://fly.io)
 [![Vercel](https://img.shields.io/badge/Vercel-deployed-000000?logo=vercel&logoColor=white)](https://vercel.com)
-![Version](https://img.shields.io/badge/API_version-3.2.0-brightgreen)
+![Version](https://img.shields.io/badge/API_version-3.3.0-brightgreen)
 
 </div>
 
@@ -301,9 +300,22 @@ Chrome Alarm fires every N minutes (configured in options)
 | Export Data | `/export` | Download your history as CSV or JSON |
 | API Keys | `/api-keys` | Generate developer API keys (max 5 per device) |
 
+### New in v3.3
+| Page | Path | Description |
+|------|------|-------------|
+| ISP Contract | `/isp-contract` | Save plan details, track SLA compliance (promised vs actual %) |
+| Network Certificate | `/certificate` | Printable A+→F quality certificate with per-metric breakdown |
+| Best Time | `/best-time` | 24-hour speed profile — best window + activity recommendations |
+| Multi-Device | `/multi-device` | Link devices via WiFi network code (QR + 6-char code); cross-device comparison |
+| DNS Monitor | `/dns-monitor` | Per-resolver latency test with pass/fail verdict |
+| Complaint Letter | `/complaint-letter` | Auto-generates ISP complaint letter from your measured data |
+| Scheduled Tests | `/scheduled-tests` | Configure recurring tests by hour/day with burst support |
+| Packet Loss | `/packet-loss` | TCP-based packet loss & jitter monitor with history sparkline |
+| WFH Score | `/wfh-score` | Work-from-home suitability across 8 apps (Zoom, Slack, Teams…) |
+
 ---
 
-## API Endpoints (v3.2)
+## API Endpoints (v3.3)
 
 ### Core
 | Method | Endpoint | Description |
@@ -355,6 +367,29 @@ Chrome Alarm fires every N minutes (configured in options)
 | `GET`  | `/api/alerts/log` | Alert delivery history |
 | `GET`  | `/api/metrics` | Prometheus metrics (Grafana scraping) |
 
+### New in v3.3
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST` | `/api/contract` | Save / retrieve ISP contract details |
+| `GET` | `/api/contract/compliance` | Promised vs actual compliance report |
+| `GET` | `/api/certificate` | Generate network quality certificate |
+| `GET` | `/api/best-time` | 24-hour speed profile + best window |
+| `GET` | `/api/devices/my-groups` | List device groups for this device |
+| `GET` | `/api/devices/nearby` | Discover devices on same WiFi (public IP match) |
+| `POST` | `/api/devices/link` | Link device to a group (auto-generates group ID) |
+| `DELETE` | `/api/devices/link/{group_id}` | Unlink from a device group |
+| `GET` | `/api/devices/compare` | Cross-device performance comparison |
+| `GET` | `/api/dns-test` | Per-resolver DNS latency test |
+| `GET` | `/api/complaint-letter` | Generate ISP complaint letter from measured data |
+| `GET/POST/PUT/DELETE` | `/api/schedules` | Scheduled speed test CRUD |
+| `POST` | `/api/packet-loss/run` | Run TCP packet loss + jitter test |
+| `GET` | `/api/packet-loss/history` | Packet loss test history |
+| `GET` | `/api/neighborhood-outages` | Community outages filtered by proximity |
+| `GET` | `/api/wfh-score` | Work-from-home connection quality score |
+| `GET` | `/api/uptime-calendar` | 90-day uptime heatmap |
+| `GET` | `/api/isp-community-status` | Aggregated ISP health across all users |
+| `GET` | `/api/speed-trend` | Multi-week speed trend (improving/stable/declining) |
+
 ### Advanced Diagnostics
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -389,7 +424,11 @@ security_scans          — port scan + privacy score results
 webhooks                — custom webhook registrations (max 5/device)
 api_keys                — developer API keys (hashed, max 5/device)
 speed_challenges        — leaderboard entries (best download/upload per device)
-user_locations          — saved monitoring locations per device
+user_locations          — saved monitoring locations + WiFi presence registry
+isp_contracts           — per-device ISP plan details for SLA compliance tracking
+test_schedules          — recurring speed test schedules (hours × days × burst)
+packet_loss_readings    — TCP packet loss + jitter history per device
+device_groups           — multi-device group memberships for cross-device comparison
 ```
 
 ---
@@ -613,9 +652,21 @@ Internet-Stability-Tracker/
 │   │   │   ├── BeforeAfterPage.js          # Before/after comparison
 │   │   │   ├── ISPReportCardPage.js        # Community ISP grades
 │   │   │   ├── ExportPage.js               # CSV / JSON export
-│   │   │   └── APIKeysPage.js              # Developer API key management
-│   │   ├── services/api.js                 # Axios client + cold-start retry
-│   │   └── App.js                          # Router + navigation
+│   │   │   ├── APIKeysPage.js              # Developer API key management
+│   │   │   ├── ISPContractPage.js          # ISP contract + SLA compliance (v3.3)
+│   │   │   ├── CertificatePage.js          # Network quality certificate (v3.3)
+│   │   │   ├── BestTimePage.js             # 24h best-time recommender (v3.3)
+│   │   │   ├── MultiDevicePage.js          # WiFi device linking + comparison (v3.3)
+│   │   │   ├── DNSMonitorPage.js           # DNS resolver latency test (v3.3)
+│   │   │   ├── ComplaintLetterPage.js      # ISP complaint letter generator (v3.3)
+│   │   │   ├── ScheduledTestsPage.js       # Scheduled speed tests CRUD (v3.3)
+│   │   │   ├── PacketLossPage.js           # TCP packet loss + jitter (v3.3)
+│   │   │   ├── WFHScorePage.js             # Work-from-home score (v3.3)
+│   │   │   ├── UptimeCalendarPage.js       # 90-day uptime heatmap (v3.3)
+│   │   │   ├── ISPCommunityPage.js         # ISP community health (v3.3)
+│   │   │   └── SpeedTrendPage.js           # Multi-week speed trend (v3.3)
+│   │   ├── services/api.js                 # Axios client + cold-start retry (100+ endpoints)
+│   │   └── App.js                          # Router + navigation (30+ pages)
 │   └── package.json
 ├── browser-extension/
 │   ├── manifest.json                       # Manifest V3
@@ -624,7 +675,7 @@ Internet-Stability-Tracker/
 │   ├── options.html / options.js           # Settings page
 │   └── README.md
 ├── docker-compose.yml                      # Full stack: backend + frontend + redis
-├── postman_collection.json                 # Pre-configured (v3.2, 80+ requests)
+├── postman_collection.json                 # Pre-configured (v3.3, 100+ requests)
 ├── .github/workflows/
 │   ├── ci.yml
 │   ├── deploy-fly.yml
@@ -636,11 +687,11 @@ Internet-Stability-Tracker/
 
 ## Postman Collection
 
-Import `postman_collection.json` — 80+ pre-configured requests across 18 folders.
+Import `postman_collection.json` — 100+ pre-configured requests across 22 folders.
 
 The `base_url` variable defaults to the live production API. Change it to `http://localhost:8000/api` for local development. Set `client_id` to your browser's `ist_client_id` from localStorage to test device-scoped endpoints.
 
-**Folders:** Health · Speed Test · Measurements · Statistics · Outages · ISP · Community Reports · Diagnostics · Security · Historical · AI Insights · ML Predictions · Smart Alerts · Webhooks · Monitoring · New Features (SLA, Throttle, Health Score, Cost, Leaderboard, Export, API Keys) · Browser Extension
+**Folders:** Health · Speed Test · Measurements · Statistics · Outages · ISP · Community Reports · Diagnostics · Security · Historical · AI Insights · ML Predictions · Smart Alerts · Webhooks · Monitoring · v3.2 Features (SLA, Throttle, Health Score, Cost, Leaderboard, Export, API Keys) · v3.3 Features (ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score)
 
 ---
 

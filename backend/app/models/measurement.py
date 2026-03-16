@@ -147,3 +147,62 @@ class SpeedChallenge(Base):
     isp           = Column(String, nullable=True)
     country       = Column(String, nullable=True)
     recorded_at   = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ── New models (v3.3) ─────────────────────────────────────────────────────────
+
+class ISPContract(Base):
+    """User's ISP contract details for promised-vs-actual tracking."""
+    __tablename__ = "isp_contracts"
+    id                 = Column(Integer, primary_key=True, index=True)
+    client_id          = Column(String, unique=True, nullable=False, index=True)
+    isp_name           = Column(String, nullable=False)
+    plan_name          = Column(String, nullable=True)
+    promised_download  = Column(Float, nullable=False)   # Mbps
+    promised_upload    = Column(Float, nullable=True)    # Mbps
+    monthly_cost       = Column(Float, nullable=True)    # local currency
+    currency           = Column(String, default="USD")
+    contract_start     = Column(DateTime, nullable=True)
+    contract_end       = Column(DateTime, nullable=True)
+    sla_threshold_pct  = Column(Float, default=80.0)     # % of promised speed = passing
+    created_at         = Column(DateTime, default=datetime.utcnow)
+    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TestSchedule(Base):
+    """User-defined speed test schedules (cron-like)."""
+    __tablename__ = "test_schedules"
+    id          = Column(Integer, primary_key=True, index=True)
+    client_id   = Column(String, nullable=False, index=True)
+    label       = Column(String, default="My Schedule")
+    # Simple schedule: list of hours (0-23) on which to run each day
+    hours       = Column(JSON, default=lambda: [8, 13, 18, 23])
+    days        = Column(JSON, default=lambda: [0,1,2,3,4,5,6])  # 0=Mon
+    enabled     = Column(Boolean, default=True)
+    burst_count = Column(Integer, default=1)   # run N tests in a row
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    last_run    = Column(DateTime, nullable=True)
+
+
+class PacketLossReading(Base):
+    """Continuous packet-loss and jitter measurements."""
+    __tablename__ = "packet_loss_readings"
+    id          = Column(Integer, primary_key=True, index=True)
+    client_id   = Column(String, nullable=False, index=True)
+    timestamp   = Column(DateTime, default=datetime.utcnow, index=True)
+    loss_pct    = Column(Float, nullable=False)   # 0–100
+    jitter_ms   = Column(Float, nullable=True)    # ms variance
+    avg_ping_ms = Column(Float, nullable=True)
+    target      = Column(String, default="1.1.1.1")
+    __table_args__ = (Index("ix_pl_client_ts", "client_id", "timestamp"),)
+
+
+class DeviceGroup(Base):
+    """Links multiple client IDs into a named group for multi-device view."""
+    __tablename__ = "device_groups"
+    id         = Column(Integer, primary_key=True, index=True)
+    group_id   = Column(String, nullable=False, index=True)  # UUID shared by members
+    client_id  = Column(String, nullable=False, index=True)  # each member row
+    label      = Column(String, default="My Device")
+    joined_at  = Column(DateTime, default=datetime.utcnow)
+    is_primary = Column(Boolean, default=False)

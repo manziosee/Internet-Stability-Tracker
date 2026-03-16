@@ -32,6 +32,18 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import DownloadIcon from '@mui/icons-material/Download';
 import KeyIcon from '@mui/icons-material/Key';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import GroupsIcon from '@mui/icons-material/Groups';
+import ContractIcon from '@mui/icons-material/Assignment';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import DevicesIcon from '@mui/icons-material/Devices';
+import DnsIcon from '@mui/icons-material/Dns';
+import GavelIcon from '@mui/icons-material/Gavel';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
+import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -60,28 +72,29 @@ import ExportPage from './components/ExportPage';
 import APIKeysPage from './components/APIKeysPage';
 import ISPReportCardPage from './components/ISPReportCardPage';
 import BeforeAfterPage from './components/BeforeAfterPage';
+import UptimeCalendarPage from './components/UptimeCalendarPage';
+import ISPCommunityPage from './components/ISPCommunityPage';
+import SpeedTrendPage from './components/SpeedTrendPage';
+import ISPContractPage from './components/ISPContractPage';
+import CertificatePage from './components/CertificatePage';
+import BestTimePage from './components/BestTimePage';
+import MultiDevicePage from './components/MultiDevicePage';
+import DNSMonitorPage from './components/DNSMonitorPage';
+import ComplaintLetterPage from './components/ComplaintLetterPage';
+import ScheduledTestsPage from './components/ScheduledTestsPage';
+import PacketLossPage from './components/PacketLossPage';
+import WFHScorePage from './components/WFHScorePage';
 
-// Groups used in the desktop nav for visual separation
+// Core nav items shown in top bar (keep ≤8 for readability)
 const NAV_ITEMS = [
-  // Core
-  { label: 'Dashboard',    path: '/',                     icon: <DashboardIcon fontSize="small" />,   group: 'core' },
-  { label: 'Status',       path: '/status',               icon: <PublicIcon fontSize="small" />,      group: 'core' },
-  { label: 'Outage Map',   path: '/map',                  icon: <MapIcon fontSize="small" />,         group: 'core' },
-  { label: 'Report',       path: '/report',               icon: <ReportProblemIcon fontSize="small" />,group: 'core' },
-  { label: 'ISP',          path: '/isp',                  icon: <StarIcon fontSize="small" />,        group: 'core' },
-  { label: 'Cool',         path: '/cool',                 icon: <AutoAwesomeIcon fontSize="small" />, group: 'core' },
-  // Group 1 — Advanced Diagnostics
-  { label: 'Diagnostics',  path: '/diagnostics-advanced', icon: <BiotechIcon fontSize="small" />,     group: 'g1' },
-  // Group 2 — Historical Visualization
-  { label: 'Historical',   path: '/history',              icon: <TimelineIcon fontSize="small" />,    group: 'g2' },
-  // Group 3 — AI Insights
-  { label: 'AI Insights',  path: '/ai-enhanced',          icon: <PsychologyIcon fontSize="small" />,  group: 'g3' },
-  // Other
-  { label: 'Advanced',     path: '/advanced',             icon: <InsightsIcon fontSize="small" />,              group: 'other' },
-  { label: 'Security',     path: '/security',             icon: <SecurityIcon fontSize="small" />,              group: 'other' },
-  { label: 'Alerts',       path: '/alerts',               icon: <NotificationsActiveIcon fontSize="small" />,   group: 'other' },
-  { label: 'Leaderboard',  path: '/leaderboard',          icon: <EmojiEventsIcon fontSize="small" />,           group: 'other' },
-  { label: 'Health Score', path: '/health-score',         icon: <HealthAndSafetyIcon fontSize="small" />,       group: 'other' },
+  { label: 'Dashboard',    path: '/',             icon: <DashboardIcon fontSize="small" />,          group: 'core' },
+  { label: 'Status',       path: '/status',       icon: <PublicIcon fontSize="small" />,             group: 'core' },
+  { label: 'Outage Map',   path: '/map',          icon: <MapIcon fontSize="small" />,                group: 'core' },
+  { label: 'AI Insights',  path: '/ai-enhanced',  icon: <PsychologyIcon fontSize="small" />,         group: 'core' },
+  { label: 'Health',       path: '/health-score', icon: <HealthAndSafetyIcon fontSize="small" />,    group: 'tools' },
+  { label: 'Leaderboard',  path: '/leaderboard',  icon: <EmojiEventsIcon fontSize="small" />,        group: 'tools' },
+  { label: 'Alerts',       path: '/alerts',       icon: <NotificationsActiveIcon fontSize="small" />,group: 'tools' },
+  { label: 'Security',     path: '/security',     icon: <SecurityIcon fontSize="small" />,           group: 'tools' },
 ];
 
 // Full drawer list including hidden routes
@@ -121,14 +134,29 @@ const DRAWER_ITEMS = [
     { label: 'Before/After',      path: '/before-after',   icon: <CompareArrowsIcon /> },
     { label: 'ISP Report Card',   path: '/isp-report',     icon: <StarIcon /> },
     { label: 'Export Data',       path: '/export',         icon: <DownloadIcon /> },
-    { label: 'API Keys',          path: '/api-keys',       icon: <KeyIcon /> },
+    { label: 'API Keys',          path: '/api-keys',        icon: <KeyIcon /> },
+    { label: 'Uptime Calendar',   path: '/uptime-calendar', icon: <CalendarMonthIcon /> },
+    { label: 'ISP Community',     path: '/isp-community',   icon: <GroupsIcon /> },
+    { label: 'Speed Trend',       path: '/speed-trend',     icon: <TrendingUpIcon /> },
+  ]},
+  { section: 'v3.3 — New Features', items: [
+    { label: 'ISP Contract Tracker', path: '/isp-contract',    icon: <ContractIcon /> },
+    { label: 'Quality Certificate',  path: '/certificate',     icon: <WorkspacePremiumIcon /> },
+    { label: 'Best Time to Use',     path: '/best-time',       icon: <AccessTimeIcon /> },
+    { label: 'Multi-Device',         path: '/multi-device',    icon: <DevicesIcon /> },
+    { label: 'DNS Monitor',          path: '/dns-monitor',     icon: <DnsIcon /> },
+    { label: 'Complaint Letter',     path: '/complaint-letter',icon: <GavelIcon /> },
+    { label: 'Scheduled Tests',      path: '/schedules',       icon: <ScheduleIcon /> },
+    { label: 'Packet Loss Monitor',  path: '/packet-loss',     icon: <SignalCellularAltIcon /> },
+    { label: 'WFH Readiness',        path: '/wfh-score',       icon: <HomeWorkIcon /> },
   ]},
 ];
 
 function NavBar() {
   const location = useLocation();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
+  const isMobile  = useMediaQuery(theme.breakpoints.down('md'));
+  const isCompact = useMediaQuery(theme.breakpoints.between('md', 'xl'));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { mode, toggleColorMode } = useColorMode();
 
@@ -190,12 +218,15 @@ function NavBar() {
             </IconButton>
           </Tooltip>
 
-          {isMobile ? (
-            <IconButton color="inherit" onClick={() => setDrawerOpen(true)} edge="end">
-              <MenuIcon />
-            </IconButton>
-          ) : (
-            <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+          {/* Hamburger always visible — opens full drawer */}
+          <IconButton color="inherit" onClick={() => setDrawerOpen(true)} edge="end"
+            sx={{ mr: isMobile ? 0 : 0.5 }}>
+            <MenuIcon />
+          </IconButton>
+
+          {/* Desktop: condensed icon+label or icon-only nav */}
+          {!isMobile && (
+            <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center', ml: 0.5 }}>
               {NAV_ITEMS.map((item, idx) => {
                 const active = location.pathname === item.path;
                 const prevGroup = idx > 0 ? NAV_ITEMS[idx - 1].group : item.group;
@@ -205,7 +236,7 @@ function NavBar() {
                     {showDivider && (
                       <Box sx={{ width: '1px', height: 20, bgcolor: 'rgba(240,194,75,0.2)', mx: 0.25 }} />
                     )}
-                    <Tooltip title={item.label} placement="bottom" arrow>
+                    <Tooltip title={isCompact ? item.label : ''} placement="bottom" arrow>
                       <Button
                         component={Link}
                         to={item.path}
@@ -215,18 +246,19 @@ function NavBar() {
                           fontWeight: active ? 800 : 500,
                           bgcolor: active ? '#f0c24b' : 'transparent',
                           borderRadius: 2,
-                          px: 1.2,
-                          fontSize: 12,
+                          px: isCompact ? 0.8 : 1.2,
+                          py: 0.6,
+                          fontSize: 11,
                           minWidth: 'auto',
                           whiteSpace: 'nowrap',
-                          '& .MuiButton-startIcon': { mr: 0.4 },
+                          '& .MuiButton-startIcon': { mr: isCompact ? 0 : 0.4 },
                           '&:hover': {
                             bgcolor: active ? '#f6d978' : 'rgba(240,194,75,0.12)',
                             color: active ? '#000' : '#f0c24b',
                           },
                         }}
                       >
-                        {item.label}
+                        {isCompact ? null : item.label}
                       </Button>
                     </Tooltip>
                   </React.Fragment>
@@ -350,7 +382,19 @@ function App() {
             <Route path="/export"        element={<ExportPage />} />
             <Route path="/api-keys"      element={<APIKeysPage />} />
             <Route path="/isp-report"    element={<ISPReportCardPage />} />
-            <Route path="/before-after"  element={<BeforeAfterPage />} />
+            <Route path="/before-after"       element={<BeforeAfterPage />} />
+            <Route path="/uptime-calendar"    element={<UptimeCalendarPage />} />
+            <Route path="/isp-community"      element={<ISPCommunityPage />} />
+            <Route path="/speed-trend"        element={<SpeedTrendPage />} />
+            <Route path="/isp-contract"       element={<ISPContractPage />} />
+            <Route path="/certificate"        element={<CertificatePage />} />
+            <Route path="/best-time"          element={<BestTimePage />} />
+            <Route path="/multi-device"       element={<MultiDevicePage />} />
+            <Route path="/dns-monitor"        element={<DNSMonitorPage />} />
+            <Route path="/complaint-letter"   element={<ComplaintLetterPage />} />
+            <Route path="/schedules"          element={<ScheduledTestsPage />} />
+            <Route path="/packet-loss"        element={<PacketLossPage />} />
+            <Route path="/wfh-score"          element={<WFHScorePage />} />
           </Routes>
         </Box>
       </Box>

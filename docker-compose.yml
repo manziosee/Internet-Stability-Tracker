@@ -62,7 +62,7 @@ services:
       start_period: 25s
     labels:
       com.ist.service: "backend"
-      com.ist.version: "3.2.0"
+      com.ist.version: "3.3.0"
 
   # ── React Frontend served by nginx ───────────────────────────────────────────
   frontend:
@@ -97,7 +97,7 @@ services:
       start_period: 15s
     labels:
       com.ist.service: "frontend"
-      com.ist.version: "3.2.0"
+      com.ist.version: "3.3.0"
 
 networks:
   ist-network:

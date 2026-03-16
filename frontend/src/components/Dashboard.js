@@ -417,6 +417,7 @@ function Dashboard() {
   const [networkUsage, setNetworkUsage] = useState(null);
   const [networkLoading, setNetworkLoading] = useState(false);
   const [bandwidth, setBandwidth] = useState({ download: null, upload: null, measuring: false });
+  const [bandwidthHistory, setBandwidthHistory] = useState([]);
   const [wsStatus, setWsStatus] = useState('disconnected'); // 'connected' | 'disconnected'
   const [now, setNow] = useState(new Date());
 
@@ -463,6 +464,7 @@ function Dashboard() {
       clearTimeout(reconnectTimer);
       if (wsRef.current) {
         wsRef.current.onclose = null;  // prevent reconnect loop on cleanup
+        wsRef.current.onerror = null;  // prevent error triggering close → reconnect
         wsRef.current.close();
       }
     };
@@ -572,6 +574,7 @@ function Dashboard() {
       const ulMbps = parseFloat(((UPLOAD_BYTES * 8) / ulSec / 1_000_000).toFixed(2));
 
       setBandwidth({ download: dlMbps, upload: ulMbps, measuring: false });
+      setBandwidthHistory(prev => [...prev, { dl: dlMbps, ul: ulMbps }].slice(-24));
     } catch {
       setBandwidth((prev) => ({ ...prev, measuring: false }));
     }
@@ -1638,132 +1641,203 @@ function Dashboard() {
         </DialogActions>
       </Dialog>
 
-      {/* ── Network Activity by App ───────────────────────────────────────── */}
+      {/* ── Live Network Activity ─────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-        <Paper sx={{ p: 3, mt: 3, border: '1px solid rgba(240,194,75,0.18)', background: isDark ? '#080808' : '#fff' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, flexWrap: 'wrap', gap: 1.5 }}>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>Live Network Activity</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Your real-time bandwidth · apps with active connections · refreshes every 8s
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              {/* Download speed */}
-              <Box sx={{ textAlign: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <DownloadIcon sx={{ fontSize: 14, color: '#f0c24b' }} />
-                  {bandwidth.measuring && bandwidth.download === null ? (
-                    <CircularProgress size={16} sx={{ color: '#f0c24b' }} />
-                  ) : (
-                    <Typography fontWeight={900} sx={{ color: '#f0c24b', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
-                      {bandwidth.download != null ? bandwidth.download.toFixed(1) : '…'}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" sx={{ color: '#f0c24b', fontWeight: 700 }}>Mbps</Typography>
-                </Box>
-                <Typography variant="caption" color="text.disabled">Download now</Typography>
+        <Paper sx={{ mt: 3, border: '1px solid rgba(240,194,75,0.18)', background: isDark ? '#080808' : '#fff', overflow: 'hidden' }}>
+
+          {/* ── Header ── */}
+          <Box sx={{ px: 3, pt: 2.5, pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ position: 'relative', width: 10, height: 10, flexShrink: 0 }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: bandwidth.measuring ? '#FFA726' : bandwidth.download != null ? '#43A047' : '#757575', position: 'absolute' }} />
+                <Box sx={{
+                  width: 10, height: 10, borderRadius: '50%', position: 'absolute', opacity: 0.4,
+                  bgcolor: bandwidth.measuring ? '#FFA726' : bandwidth.download != null ? '#43A047' : '#757575',
+                  animation: 'ist-pulse 2s ease-out infinite',
+                  '@keyframes ist-pulse': {
+                    '0%':   { transform: 'scale(1)', opacity: 0.5 },
+                    '80%':  { transform: 'scale(2.8)', opacity: 0 },
+                    '100%': { transform: 'scale(2.8)', opacity: 0 },
+                  },
+                }} />
               </Box>
-              {/* Upload speed */}
-              <Box sx={{ textAlign: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <UploadIcon sx={{ fontSize: 14, color: isDark ? '#d0d0d0' : '#555' }} />
-                  {bandwidth.measuring && bandwidth.upload === null ? (
-                    <CircularProgress size={16} sx={{ color: isDark ? '#d0d0d0' : '#555' }} />
-                  ) : (
-                    <Typography fontWeight={900} sx={{ color: isDark ? '#d0d0d0' : '#333', fontSize: '1.4rem', fontVariantNumeric: 'tabular-nums' }}>
-                      {bandwidth.upload != null ? bandwidth.upload.toFixed(1) : '…'}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" sx={{ color: isDark ? '#d0d0d0' : '#555', fontWeight: 700 }}>Mbps</Typography>
-                </Box>
-                <Typography variant="caption" color="text.disabled">Upload now</Typography>
+              <Box>
+                <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.2 }}>Live Network Activity</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Browser-measured bandwidth · active process connections · refreshes every 8s
+                </Typography>
               </Box>
             </Box>
+            <Chip size="small"
+              label={bandwidth.measuring ? 'Measuring…' : bandwidth.download != null ? 'Live' : 'Initialising'}
+              sx={{
+                fontWeight: 700, fontSize: 10, height: 22,
+                bgcolor: bandwidth.measuring ? 'rgba(255,167,38,0.15)' : bandwidth.download != null ? 'rgba(67,160,71,0.15)' : 'rgba(117,117,117,0.15)',
+                color:   bandwidth.measuring ? '#FFA726'              : bandwidth.download != null ? '#43A047'             : '#757575',
+                border:  `1px solid ${bandwidth.measuring ? 'rgba(255,167,38,0.3)' : bandwidth.download != null ? 'rgba(67,160,71,0.3)' : 'rgba(117,117,117,0.2)'}`,
+              }}
+            />
           </Box>
 
-          {/* Bandwidth bars — show once we have a measurement */}
-          {(bandwidth.download != null || bandwidth.upload != null) && (
-            <Box sx={{ mb: 2.5 }}>
+          <Box sx={{ px: 3, py: 2.5 }}>
+            {/* ── Bandwidth stat cards ── */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
               {[
-                { label: 'Download', value: bandwidth.download ?? 0, color: '#f0c24b' },
-                { label: 'Upload',   value: bandwidth.upload   ?? 0, color: isDark ? '#d0d0d0' : '#888' },
-              ].map(({ label, value, color }) => {
-                const maxVal = Math.max(bandwidth.download ?? 0, bandwidth.upload ?? 0, 1);
+                { label: 'Download', value: bandwidth.download, icon: DownloadIcon, color: '#42A5F5', histKey: 'dl', thresholds: [50, 20, 5],  qLabels: ['Fast','Good','Fair','Slow'], qColors: ['#43A047','#66BB6A','#FFA726','#EF5350'] },
+                { label: 'Upload',   value: bandwidth.upload,   icon: UploadIcon,   color: '#AB47BC', histKey: 'ul', thresholds: [20, 10, 2],  qLabels: ['Fast','Good','Fair','Slow'], qColors: ['#43A047','#66BB6A','#FFA726','#EF5350'] },
+              ].map(({ label, value, icon: Icon, color, histKey, thresholds, qLabels, qColors }) => {
+                const qi = value == null ? -1 : value >= thresholds[0] ? 0 : value >= thresholds[1] ? 1 : value >= thresholds[2] ? 2 : 3;
+                const qColor = qi >= 0 ? qColors[qi] : '#757575';
+                const qLabel = qi >= 0 ? qLabels[qi] : '—';
+                const history = bandwidthHistory.map(h => h[histKey]);
+                const histMax = Math.max(...history, 1);
                 return (
-                  <Box key={label} sx={{ mb: 1 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
-                      <Typography variant="caption" fontWeight={700} sx={{ color }}>{label}</Typography>
-                      <Typography variant="caption" fontWeight={700} sx={{ color, fontVariantNumeric: 'tabular-nums' }}>{value.toFixed(2)} Mbps</Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min((value / maxVal) * 100, 100)}
-                      sx={{
-                        height: 8, borderRadius: 4,
-                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                        '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 },
-                      }}
-                    />
-                  </Box>
-                );
-              })}
-            </Box>
-          )}
-
-          {networkLoading && !networkUsage ? (
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} variant="rectangular" width={140} height={60} sx={{ borderRadius: 2 }} />
-              ))}
-            </Box>
-          ) : networkUsage?.apps?.length > 0 ? (
-            <Box>
-
-              {/* Per-app list */}
-              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1, mb: 1.5, display: 'block' }}>
-                Apps with active connections
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                {networkUsage.apps.map((app, i) => (
-                  <motion.div key={app.name} whileHover={{ scale: 1.04 }} transition={{ duration: 0.2 }}>
-                    <Box
-                      sx={{
-                        px: 2, py: 1.25, borderRadius: 2.5,
-                        border: '1px solid rgba(240,194,75,0.18)',
-                        bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                        minWidth: 120,
-                        '&:hover': { bgcolor: isDark ? 'rgba(240,194,75,0.06)' : 'rgba(240,194,75,0.05)', borderColor: 'rgba(240,194,75,0.35)' },
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
-                        <Box
-                          sx={{
-                            width: 28, height: 28, borderRadius: 1.5, flexShrink: 0,
-                            background: `linear-gradient(135deg, hsl(${(i * 47 + 200) % 360},60%,${isDark ? '30%' : '88%'}) 0%, hsl(${(i * 47 + 230) % 360},55%,${isDark ? '25%' : '78%'}) 100%)`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
-                        >
-                          <Typography fontWeight={900} fontSize={11} sx={{ color: isDark ? `hsl(${(i * 47 + 200) % 360},75%,80%)` : `hsl(${(i * 47 + 200) % 360},50%,30%)` }}>
-                            {app.name.charAt(0).toUpperCase()}
+                  <Grid size={{ xs: 12, sm: 6 }} key={label}>
+                    <Box sx={{
+                      p: 2, borderRadius: 2, height: '100%',
+                      border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)'}`,
+                      bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Icon sx={{ fontSize: 16, color }} />
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</Typography>
+                        </Box>
+                        <Chip size="small" label={qLabel} sx={{ fontWeight: 700, fontSize: 10, height: 18, bgcolor: `${qColor}18`, color: qColor, border: `1px solid ${qColor}30` }} />
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, mb: 1.5 }}>
+                        {bandwidth.measuring && value === null ? (
+                          <CircularProgress size={20} sx={{ color }} />
+                        ) : (
+                          <>
+                            <Typography fontWeight={900} sx={{ fontSize: '2rem', lineHeight: 1, color, fontVariantNumeric: 'tabular-nums' }}>
+                              {value != null ? value.toFixed(1) : '—'}
+                            </Typography>
+                            <Typography variant="caption" fontWeight={700} sx={{ color, mb: 0.3 }}>Mbps</Typography>
+                          </>
+                        )}
+                      </Box>
+                      {history.length >= 2 ? (
+                        <Box sx={{ position: 'relative', height: 36 }}>
+                          <svg width="100%" height="36" preserveAspectRatio="none" style={{ display: 'block' }}>
+                            <defs>
+                              <linearGradient id={`g-${histKey}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+                                <stop offset="100%" stopColor={color} stopOpacity="0" />
+                              </linearGradient>
+                            </defs>
+                            {(() => {
+                              const pts = history.map((v, i) => ({ x: (i / (history.length - 1)) * 100, y: 34 - ((v / histMax) * 30) }));
+                              const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+                              const area = `${line} L${pts[pts.length-1].x},36 L${pts[0].x},36 Z`;
+                              return (
+                                <>
+                                  <path d={area} fill={`url(#g-${histKey})`} />
+                                  <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+                                  <circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="2.5" fill={color} />
+                                </>
+                              );
+                            })()}
+                          </svg>
+                          <Typography variant="caption" color="text.disabled" sx={{ position: 'absolute', bottom: 0, right: 0, fontSize: 9 }}>
+                            {history.length} readings
                           </Typography>
                         </Box>
-                        <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 90 }}>{app.name}</Typography>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {app.connections} conn{app.connections !== 1 ? 's' : ''}
-                      </Typography>
+                      ) : (
+                        <Box sx={{ height: 36, display: 'flex', alignItems: 'center' }}>
+                          <Typography variant="caption" color="text.disabled">Collecting history…</Typography>
+                        </Box>
+                      )}
                     </Box>
-                  </motion.div>
+                  </Grid>
+                );
+              })}
+            </Grid>
+
+            {/* ── Session totals ── */}
+            {networkUsage && (networkUsage.total_recv_gb != null || networkUsage.total_sent_gb != null) && (
+              <Box sx={{ display: 'flex', gap: 3, mb: 2.5, px: 1.5, py: 1, borderRadius: 1.5, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }}>
+                <Box>
+                  <Typography variant="caption" color="text.disabled">Total received</Typography>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: '#42A5F5', fontVariantNumeric: 'tabular-nums' }}>{networkUsage.total_recv_gb?.toFixed(2)} GB</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.disabled">Total sent</Typography>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: '#AB47BC', fontVariantNumeric: 'tabular-nums' }}>{networkUsage.total_sent_gb?.toFixed(2)} GB</Typography>
+                </Box>
+              </Box>
+            )}
+
+            {/* ── Active processes ── */}
+            <Typography variant="caption" fontWeight={700} color="text.secondary"
+              sx={{ textTransform: 'uppercase', letterSpacing: 1, mb: 1.5, display: 'block' }}>
+              Active Processes
+            </Typography>
+
+            {networkLoading && !networkUsage ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="rectangular" height={44} sx={{ borderRadius: 1.5 }} />
                 ))}
               </Box>
-            </Box>
-          ) : (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <WifiIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
-              <Typography color="text.secondary">No active connections detected</Typography>
-            </Box>
-          )}
+            ) : networkUsage?.apps?.length > 0 ? (() => {
+              const maxConns = Math.max(...networkUsage.apps.map(a => a.connections), 1);
+              const APP_COLORS = [
+                ['#42A5F5', '#1565C0'], ['#AB47BC', '#6A1B9A'], ['#f0c24b', '#b8860b'],
+                ['#43A047', '#1B5E20'], ['#EF5350', '#B71C1C'], ['#26C6DA', '#006064'],
+              ];
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  {networkUsage.apps.map((app, i) => {
+                    const [light, dark] = APP_COLORS[i % APP_COLORS.length];
+                    const ac = isDark ? dark : light;
+                    const barPct = Math.round((app.connections / maxConns) * 100);
+                    return (
+                      <motion.div key={app.name} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
+                        <Box sx={{
+                          display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, borderRadius: 1.5,
+                          border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`,
+                          '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
+                          transition: 'background 0.15s',
+                        }}>
+                          <Box sx={{ width: 32, height: 32, borderRadius: 1.5, flexShrink: 0, bgcolor: `${ac}22`, border: `1px solid ${ac}40`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Typography fontWeight={900} fontSize={13} sx={{ color: ac, lineHeight: 1 }}>{app.name.charAt(0).toUpperCase()}</Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 0.4 }}>
+                              <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: '70%' }}>{app.name}</Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0, ml: 1 }}>
+                                {app.connections} conn{app.connections !== 1 ? 's' : ''}
+                              </Typography>
+                            </Box>
+                            <LinearProgress variant="determinate" value={barPct} sx={{
+                              height: 4, borderRadius: 2,
+                              bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)',
+                              '& .MuiLinearProgress-bar': { bgcolor: ac, borderRadius: 2 },
+                            }} />
+                          </Box>
+                          {app.remote_addresses?.length > 0 && (
+                            <Tooltip title={app.remote_addresses.join(', ')} placement="left" arrow>
+                              <Chip size="small"
+                                label={`${app.remote_addresses.length} IP${app.remote_addresses.length !== 1 ? 's' : ''}`}
+                                sx={{ height: 18, fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default', bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}
+                              />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </motion.div>
+                    );
+                  })}
+                </Box>
+              );
+            })() : (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <WifiIcon sx={{ fontSize: 36, color: 'text.disabled', mb: 0.5 }} />
+                <Typography variant="body2" color="text.secondary">No active connections detected</Typography>
+                <Typography variant="caption" color="text.disabled">Processes with established TCP connections will appear here</Typography>
+              </Box>
+            )}
+          </Box>
         </Paper>
       </motion.div>
     </Box>

@@ -24,6 +24,7 @@ except ImportError:
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -35,6 +36,7 @@ from .models.measurement import (  # noqa: F401 - ensures tables are created
     SpeedMeasurement, CommunityReport, OutageEvent,
     AlertConfig, AlertLog, UserPreferences, SecurityScan, Webhook,
     APIKey, UserLocation, SpeedChallenge,
+    ISPContract, TestSchedule, PacketLossReading, DeviceGroup,
 )
 
 logging.basicConfig(
@@ -171,7 +173,7 @@ _is_prod = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title="Internet Stability Tracker API",
     description="""
-## Internet Stability Tracker v3.2 — REST API
+## Internet Stability Tracker v3.3 — REST API
 
 Community-driven network monitoring platform that measures internet speed,
 detects outages, and visualises performance across ISPs.
@@ -243,6 +245,22 @@ detects outages, and visualises performance across ISPs.
   greeting (hi/hello), ISP, router, best time to use, outage, ping, speed overview, weekly summary, health report
 - **Cold-start protection** — `min_machines_running=1` + `auto_stop_machines=suspend` on Fly.io keeps one machine warm
 
+### New in v3.3 (Smart Tools & Multi-Device)
+- **ISP Contract Tracker** (`GET/POST /api/contract`, `GET /api/contract/compliance`) — save your plan details, track promised vs actual speeds with SLA compliance verdict
+- **Network Quality Certificate** (`GET /api/certificate`) — printable A+→F certificate with per-metric breakdown
+- **Best Time Recommender** (`GET /api/best-time`) — 24-hour speed profile; best window, worst hour, and activity-aware suggestions
+- **Multi-Device Aggregator** (`GET/POST/DELETE /api/devices/*`) — link devices via deterministic WiFi network code (public IP–based, no Bluetooth); QR + 6-char code sharing; cross-device performance comparison
+- **DNS Monitor** (`GET /api/dns-test`) — per-resolver latency with pass/fail verdict
+- **ISP Complaint Letter Generator** (`GET /api/complaint-letter`) — auto-generates a formal letter from your measured data with severity assessment and evidence list
+- **Scheduled Speed Tests** (`GET/POST/PUT/DELETE /api/schedules`) — configure recurring tests by hour-of-day and day-of-week; burst support (1–5 tests per trigger)
+- **Packet Loss & Jitter Monitor** (`POST /api/packet-loss/run`, `GET /api/packet-loss/history`) — TCP-based packet loss + jitter measurement with graded history
+- **Work-From-Home Score** (`GET /api/wfh-score`) — evaluates your connection for 8 WFH apps (Zoom, Slack, Teams…) with pass/warn/fail per app
+- **Neighborhood Outage Map** (`GET /api/neighborhood-outages`) — community reports filtered by proximity
+- **Browser extension v1.2** — live speed badge, sparkline chart, history panel, health score, throttle check, context menu, weekly digest, recovery notifications, upload/ping threshold alerts
+- **Uptime calendar** (`GET /api/uptime-calendar`) — 90-day daily uptime % grid (GitHub-style heatmap)
+- **ISP community status** (`GET /api/isp-community-status`) — aggregate ISP health across all users with same ISP
+- **Speed trend** (`GET /api/speed-trend`) — multi-week improving/stable/declining trend detection
+
 ### Rate limits
 | Endpoint | Limit |
 |----------|-------|
@@ -255,7 +273,7 @@ detects outages, and visualises performance across ISPs.
 ### Postman collection
 Import `postman_collection.json` from the repo root — pre-configured to hit the live production URL.
 """,
-    version="3.2.0",
+    version="3.3.0",
     contact={
         "name": "Internet Stability Tracker",
         "url": "https://github.com/manziosee/Internet-Stability-Tracker",
@@ -291,12 +309,34 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
         {"name": "export",       "description": "Data export: CSV and JSON download"},
         {"name": "api-keys",     "description": "Developer API key management (generate, list, revoke)"},
         {"name": "integrations", "description": "Slack / Microsoft Teams webhook integration"},
+        {"name": "comparison",   "description": "Before/after speed comparison between two date ranges"},
+        {"name": "contract",     "description": "ISP contract storage and SLA compliance tracking"},
+        {"name": "certificate",  "description": "Network quality certificate generation"},
+        {"name": "devices",      "description": "Multi-device linking, nearby WiFi discovery, and comparison"},
+        {"name": "schedules",    "description": "Scheduled speed test configuration"},
+        {"name": "packet-loss",  "description": "TCP-based packet loss and jitter measurement"},
+        {"name": "wfh",          "description": "Work-From-Home connection quality score"},
     ],
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# ── Global exception handler ──────────────────────────────────────────────────
+# Ensures CORS headers are present on 500 responses so the browser shows the
+# actual error instead of a misleading "CORS blocked" message.
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    cors_headers = {"Access-Control-Allow-Origin": "*"} if origin else {}
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Please try again."},
+        headers=cors_headers,
+    )
+
 
 # Middleware stack (last added = outermost = executes first)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -307,7 +347,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Client-ID"],
     max_age=600,
 )

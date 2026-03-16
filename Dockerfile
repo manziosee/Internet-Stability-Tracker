@@ -24,7 +24,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Internet Stability Tracker" \
       org.opencontainers.image.description="Network monitoring — FastAPI + React in one container" \
-      org.opencontainers.image.version="3.0.0" \
+      org.opencontainers.image.version="3.3.0" \
       org.opencontainers.image.source="https://github.com/manziosee/Internet-Stability-Tracker" \
       org.opencontainers.image.licenses="MIT"
 

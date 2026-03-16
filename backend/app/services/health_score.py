@@ -39,10 +39,16 @@ def compute_health_score(
     else:               pg_score = 10
 
     if len(downloads) >= 2:
-        mean_dl = sum(downloads) / len(downloads)
+        mean_dl  = sum(downloads) / len(downloads)
         variance = sum((x - mean_dl) ** 2 for x in downloads) / len(downloads)
-        cv = (variance ** 0.5 / mean_dl) if mean_dl > 0 else 1
-        stab_score = max(0, min(100, 100 - cv * 100))
+        std_dev  = variance ** 0.5
+        cv       = (std_dev / mean_dl) if mean_dl > 0 else 1
+        min_dl   = min(downloads)
+        # Score on both consistency (CV) and floor quality (min/mean ratio)
+        # High-speed connections are penalised less for absolute variance
+        min_ratio    = min_dl / mean_dl if mean_dl > 0 else 0
+        cv_penalty   = min(1.0, cv * 0.6)               # softer than raw CV
+        stab_score   = max(0, min(100, (min_ratio * 0.5 + (1 - cv_penalty) * 0.5) * 100))
     else:
         stab_score = 75
 

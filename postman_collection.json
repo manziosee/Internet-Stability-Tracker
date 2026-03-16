@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "Internet Stability Tracker API v3",
-    "description": "Complete API collection for Internet Stability Tracker v3 — advanced network monitoring with AI insights, security auditing, and real-time diagnostics.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3\n- Gaming metrics with grade + game recommendations\n- Video call quality predictor (Zoom, Teams, Meet)\n- Router health check & reboot detection\n- Activity recommendations (What Can I Do?)\n- Is It Just Me? global outage checker\n- Advanced diagnostics: packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed\n- Network security audit (port scan, privacy score, intrusion detection)\n- Historical visualization (heatmap, distribution, percentiles, correlation, timeline)\n- AI insights enhanced + natural language assistant\n- ML predictions (next hour, outage probability, best download time)\n- Smart alerts (Telegram, Discord, SMS)\n- User preferences (theme, layout, metrics)",
-    "version": "3.2.0",
+    "name": "Internet Stability Tracker API v3.3",
+    "description": "Complete API collection for Internet Stability Tracker v3.3 — advanced network monitoring with AI insights, security auditing, real-time diagnostics, and multi-device support.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3.3\n- ISP Contract Tracker — save plan details, track SLA compliance\n- Network Quality Certificate — printable A+→F grade certificate\n- Best Time Recommender — 24-hour speed profile with activity suggestions\n- Multi-Device Aggregator — link devices via WiFi network code (no Bluetooth), QR + 6-char code\n- DNS Monitor — per-resolver latency test\n- ISP Complaint Letter Generator — auto-generate formal letter from your data\n- Scheduled Speed Tests — recurring tests by hour/day with burst support\n- Packet Loss & Jitter Monitor — TCP-based measurement with history\n- WFH Score — work-from-home suitability across 8 apps\n- Uptime Calendar — 90-day daily uptime heatmap\n- ISP Community Status — aggregate ISP health across all users\n- Speed Trend — multi-week improving/stable/declining trend",
+    "version": "3.3.0",
     "_postman_id": "ist-api-v3",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1092,6 +1092,49 @@
       ]
     },
     {
+      "name": "Community Intelligence (v3.3)",
+      "item": [
+        {
+          "name": "Uptime Calendar (90-day)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/uptime-calendar?days=90",
+              "query": [{ "key": "days", "value": "90", "description": "Number of days (7–365)" }]
+            },
+            "description": "Returns a day-by-day uptime % grid for GitHub-style heatmap visualization. Each day has: date, uptime_pct, total tests, outage count, level (0–3). Also returns summary: avg_uptime_pct, perfect_days, outage_days, tracked_days."
+          }
+        },
+        {
+          "name": "ISP Community Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/isp-community-status",
+              "query": [
+                { "key": "isp_name", "value": "MTN", "description": "ISP name to query. Omit to auto-detect from last measurement.", "disabled": true }
+              ]
+            },
+            "description": "Aggregates anonymous speed data from all users with the same ISP. Returns status (healthy/degraded/outage), outage_pct, avg_download, unique_devices, and a verdict string. If isp_name is omitted, uses your last recorded ISP."
+          }
+        },
+        {
+          "name": "Speed Trend (multi-week)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/speed-trend?weeks=4",
+              "query": [{ "key": "weeks", "value": "4", "description": "Number of weeks to analyse (2–12)" }]
+            },
+            "description": "Detects if speed is improving, stable, or declining over multiple weeks. Returns trend (improving/stable/declining/insufficient_data), trend_pct (% change first→last week), a verdict string, and per-week breakdown of avg download/upload/ping."
+          }
+        }
+      ]
+    },
+    {
       "name": "Network Tools (v2)",
       "item": [
         {
@@ -1141,6 +1184,35 @@
             "description": "Real-time speed measurements over WebSocket. Use Postman's WebSocket client or wscat."
           }
         }
+      ]
+    },
+    {
+      "name": "v3.3 — New Features",
+      "description": "ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score",
+      "item": [
+        { "name": "Get ISP contract", "request": { "method": "GET", "url": { "raw": "{{base_url}}/contract" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Save ISP contract", "request": { "method": "POST", "url": { "raw": "{{base_url}}/contract" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"isp_name\": \"Acme Fiber\",\n  \"plan_name\": \"100 Mbps Fiber\",\n  \"promised_download\": 100,\n  \"promised_upload\": 20,\n  \"monthly_cost\": 49.99,\n  \"currency\": \"USD\",\n  \"sla_threshold_pct\": 80\n}" } } },
+        { "name": "Contract compliance report", "request": { "method": "GET", "url": { "raw": "{{base_url}}/contract/compliance?days=30" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Network quality certificate", "request": { "method": "GET", "url": { "raw": "{{base_url}}/certificate?days=30" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Best time recommender", "request": { "method": "GET", "url": { "raw": "{{base_url}}/best-time" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Nearby devices (WiFi)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/nearby" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }], "description": "Returns my_ip (shared public IP for all WiFi devices), nearby list, and already_linked status. Use my_ip to derive the deterministic WiFi group code client-side." } },
+        { "name": "My device groups", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/my-groups" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Link device to group", "request": { "method": "POST", "url": { "raw": "{{base_url}}/devices/link" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"group_id\": null,\n  \"label\": \"My Laptop\"\n}" }, "description": "Leave group_id null to create a new group. Pass a group_id to join an existing group." } },
+        { "name": "Unlink device from group", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/devices/link/GROUP_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Compare devices", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/compare" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "DNS test", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dns-test?domain=google.com" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Generate complaint letter", "request": { "method": "GET", "url": { "raw": "{{base_url}}/complaint-letter?your_name=John+Doe&your_address=123+Main+St&isp_name=Acme+Fiber&account_number=ACC12345&issue_start=2026-01-01" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "List schedules", "request": { "method": "GET", "url": { "raw": "{{base_url}}/schedules" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Create schedule", "request": { "method": "POST", "url": { "raw": "{{base_url}}/schedules" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [8, 12, 18],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 2,\n  \"enabled\": true\n}" } } },
+        { "name": "Update schedule", "request": { "method": "PUT", "url": { "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [9, 13, 19],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 1,\n  \"enabled\": false\n}" } } },
+        { "name": "Delete schedule", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Run packet loss test", "request": { "method": "POST", "url": { "raw": "{{base_url}}/packet-loss/run?target=1.1.1.1&count=20" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Packet loss history", "request": { "method": "GET", "url": { "raw": "{{base_url}}/packet-loss/history?limit=20" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "WFH score", "request": { "method": "GET", "url": { "raw": "{{base_url}}/wfh-score" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Neighborhood outages", "request": { "method": "GET", "url": { "raw": "{{base_url}}/neighborhood-outages" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Uptime calendar (90 days)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/uptime-calendar?days=90" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "ISP community status", "request": { "method": "GET", "url": { "raw": "{{base_url}}/isp-community-status" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
+        { "name": "Speed trend (4 weeks)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/speed-trend?weeks=4" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } }
       ]
     }
   ]

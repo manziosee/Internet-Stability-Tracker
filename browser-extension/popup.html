@@ -7,46 +7,135 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      width: 320px; background: #0a0a1a; color: #e0e0e0;
+      width: 360px; background: #0a0a1a; color: #e0e0e0;
     }
+
+    /* ── Header ── */
     .header {
       background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
-      padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
     }
-    .header h1 { font-size: 14px; font-weight: 700; color: #fff; }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .header h1 { font-size: 13px; font-weight: 700; color: #fff; }
+    .header-ver { font-size: 10px; color: #90caf9; }
+
+    /* ── Status bar ── */
     .status-bar {
-      padding: 8px 16px; font-size: 12px;
-      display: flex; align-items: center; gap: 6px;
-      background: #111127;
+      padding: 7px 16px; font-size: 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: #111127; border-bottom: 1px solid #1e1e3e;
     }
+    .status-left { display: flex; align-items: center; gap: 6px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dot.healthy  { background: #43A047; box-shadow: 0 0 6px #43A047; }
+    .dot.healthy  { background: #43A047; box-shadow: 0 0 6px #43A047; animation: pulse 2s infinite; }
     .dot.degraded { background: #FFA726; }
     .dot.outage   { background: #EF5350; box-shadow: 0 0 6px #EF5350; }
     .dot.unknown  { background: #757575; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .status-ts { font-size: 10px; color: #546e7a; }
+
+    /* ── Main metrics ── */
     .metrics {
       display: grid; grid-template-columns: 1fr 1fr 1fr;
-      gap: 1px; background: #1e1e2e;
+      gap: 1px; background: #1a1a2e;
     }
-    .metric { background: #12122a; padding: 16px 8px; text-align: center; }
-    .metric .val  { font-size: 22px; font-weight: 800; color: #42A5F5; line-height: 1; }
+    .metric { background: #12122a; padding: 14px 8px; text-align: center; position: relative; }
+    .metric .val  { font-size: 24px; font-weight: 800; line-height: 1; }
     .metric .unit { font-size: 10px; color: #90a4ae; margin-top: 3px; }
     .metric .lbl  { font-size: 11px; color: #b0bec5; margin-top: 5px; }
-    .actions { padding: 12px 16px; display: flex; gap: 8px; }
+    .metric .trend { font-size: 10px; margin-top: 4px; }
+    .val.good   { color: #66BB6A; }
+    .val.warn   { color: #FFA726; }
+    .val.bad    { color: #EF5350; }
+    .val.neutral { color: #42A5F5; }
+    .trend.up   { color: #66BB6A; }
+    .trend.down { color: #EF5350; }
+    .trend.flat { color: #90a4ae; }
+
+    /* ── Health score bar ── */
+    .health-row {
+      background: #0e0e26; padding: 10px 16px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid #1a1a3a;
+    }
+    .health-label { font-size: 11px; color: #90a4ae; white-space: nowrap; }
+    .health-bar-wrap { flex: 1; background: #1e1e3e; border-radius: 4px; height: 6px; overflow: hidden; }
+    .health-bar { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .health-grade {
+      font-size: 15px; font-weight: 800; min-width: 26px; text-align: right;
+    }
+    .grade-A  { color: #66BB6A; }
+    .grade-B  { color: #42A5F5; }
+    .grade-C  { color: #FFA726; }
+    .grade-D  { color: #FF7043; }
+    .grade-F  { color: #EF5350; }
+
+    /* ── Sparkline ── */
+    .sparkline-section {
+      background: #0e0e26; padding: 10px 16px 8px;
+      border-bottom: 1px solid #1a1a3a;
+    }
+    .sparkline-label { font-size: 10px; color: #546e7a; margin-bottom: 6px; }
+    canvas#sparkline { display: block; width: 100%; height: 44px; }
+
+    /* ── History ── */
+    .history-section {
+      background: #0a0a1e; border-bottom: 1px solid #1a1a3a;
+    }
+    .history-header {
+      padding: 8px 16px 4px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .history-header span { font-size: 10px; color: #546e7a; text-transform: uppercase; letter-spacing: 0.6px; }
+    .history-header button {
+      background: none; border: none; color: #546e7a; font-size: 11px; cursor: pointer; padding: 0;
+    }
+    .history-header button:hover { color: #90caf9; }
+    #historyList { padding: 0 16px 8px; }
+    .hist-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0; border-bottom: 1px solid #12122a; font-size: 11px;
+    }
+    .hist-row:last-child { border-bottom: none; }
+    .hist-ts { color: #546e7a; min-width: 62px; }
+    .hist-vals { display: flex; gap: 8px; }
+    .hist-dl { color: #42A5F5; }
+    .hist-ul { color: #66BB6A; }
+    .hist-pg { color: #FFA726; }
+    .hist-empty { padding: 8px 16px; font-size: 11px; color: #546e7a; }
+
+    /* ── Actions ── */
+    .actions { padding: 10px 16px; display: flex; gap: 8px; }
     .btn {
-      flex: 1; padding: 10px 8px; border: none; border-radius: 8px;
-      cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.15s;
+      flex: 1; padding: 9px 6px; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 12px; font-weight: 600; transition: opacity 0.15s;
     }
     .btn:hover:not(:disabled) { opacity: 0.85; }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary   { background: #1565C0; color: #fff; }
     .btn-secondary { background: #1e2d3d; color: #90caf9; border: 1px solid #263545; }
-    .footer {
-      padding: 6px 16px 12px; font-size: 11px; color: #546e7a; text-align: center;
+    .btn-danger    { background: #4a1a1a; color: #ef9a9a; border: 1px solid #6a2020; }
+
+    /* ── Quick links ── */
+    .quick-links {
+      padding: 6px 16px 10px; display: flex; gap: 6px; flex-wrap: wrap;
     }
+    .ql-btn {
+      background: #111127; border: 1px solid #1e1e3e; color: #90a4ae;
+      font-size: 10px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+      white-space: nowrap; transition: all 0.15s;
+    }
+    .ql-btn:hover { background: #1e1e3e; color: #e0e0e0; }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 5px 16px 10px; font-size: 10px; color: #37474f;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ── Spinner ── */
     .spinner {
-      display: inline-block; width: 13px; height: 13px;
-      border: 2px solid #fff; border-top-color: transparent;
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
       border-radius: 50%; animation: spin 0.7s linear infinite;
       vertical-align: middle; margin-right: 4px;
     }
@@ -54,39 +143,93 @@
   </style>
 </head>
 <body>
+  <!-- Header -->
   <div class="header">
-    <h1>🌐 Internet Stability Tracker</h1>
+    <div class="header-left">
+      <h1>🌐 Internet Stability Tracker</h1>
+    </div>
+    <span class="header-ver" id="extVer">v1.2.0</span>
   </div>
 
+  <!-- Status -->
   <div class="status-bar">
-    <div class="dot unknown" id="statusDot"></div>
-    <span id="statusText">Checking…</span>
+    <div class="status-left">
+      <div class="dot unknown" id="statusDot"></div>
+      <span id="statusText">Checking…</span>
+    </div>
+    <span class="status-ts" id="statusTs"></span>
   </div>
 
+  <!-- Current metrics -->
   <div class="metrics">
     <div class="metric">
-      <div class="val" id="dlVal">—</div>
+      <div class="val neutral" id="dlVal">—</div>
       <div class="unit">Mbps</div>
       <div class="lbl">Download</div>
+      <div class="trend" id="dlTrend"></div>
     </div>
     <div class="metric">
-      <div class="val" id="ulVal">—</div>
+      <div class="val neutral" id="ulVal">—</div>
       <div class="unit">Mbps</div>
       <div class="lbl">Upload</div>
+      <div class="trend" id="ulTrend"></div>
     </div>
     <div class="metric">
-      <div class="val" id="pgVal">—</div>
+      <div class="val neutral" id="pgVal">—</div>
       <div class="unit">ms</div>
       <div class="lbl">Ping</div>
+      <div class="trend" id="pgTrend"></div>
     </div>
   </div>
 
-  <div class="actions">
-    <button class="btn btn-primary"   id="testBtn">Run Speed Test</button>
-    <button class="btn btn-secondary" id="openBtn">Dashboard ↗</button>
+  <!-- Health score -->
+  <div class="health-row">
+    <span class="health-label">Health Score</span>
+    <div class="health-bar-wrap">
+      <div class="health-bar" id="healthBar" style="width:0%;background:#546e7a"></div>
+    </div>
+    <span class="health-grade grade-F" id="healthGrade">—</span>
   </div>
 
-  <div class="footer" id="lastTest">No test run yet</div>
+  <!-- Sparkline -->
+  <div class="sparkline-section">
+    <div class="sparkline-label">Download speed trend (last 20 tests)</div>
+    <canvas id="sparkline" width="328" height="44"></canvas>
+  </div>
+
+  <!-- History -->
+  <div class="history-section">
+    <div class="history-header">
+      <span>Recent Tests</span>
+      <button id="toggleHistory">show ▾</button>
+    </div>
+    <div id="historyContent" style="display:none">
+      <div id="historyList"></div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-primary"   id="testBtn">▶ Run Test</button>
+    <button class="btn btn-secondary" id="throttleBtn">⚡ Throttle?</button>
+    <button class="btn btn-secondary" id="openBtn">↗ Dashboard</button>
+  </div>
+
+  <!-- Quick links -->
+  <div class="quick-links">
+    <button class="ql-btn" data-path="/health-score">💚 Health</button>
+    <button class="ql-btn" data-path="/leaderboard">🏆 Leaderboard</button>
+    <button class="ql-btn" data-path="/weekly-report">📋 Report</button>
+    <button class="ql-btn" data-path="/sla">📊 SLA</button>
+    <button class="ql-btn" data-path="/alerts">🔔 Alerts</button>
+    <button class="ql-btn" data-path="/export">⬇ Export</button>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span id="lastTestTs">No test yet</span>
+    <span id="autoStatus"></span>
+  </div>
 
   <script src="popup.js"></script>
 </body>

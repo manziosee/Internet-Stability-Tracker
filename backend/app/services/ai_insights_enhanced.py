@@ -1,4 +1,5 @@
 """AI-Powered Insights Service - Enhanced"""
+import re
 import statistics
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
@@ -299,8 +300,11 @@ class AIInsightsService:
             )
         ).order_by(Measurement.timestamp.asc()).all()
 
-        # ── Greeting — respond before data check ─────────────────────────────
-        if any(k in query_lower for k in ("hi", "hello", "hey", "howdy", "sup", "good morning", "good evening")):
+        # ── Greeting — use word-boundary match so "hi" doesn't fire on "which/this/while"
+        _GREETING_RE = re.compile(
+            r'\b(hi|hey|hello|howdy|sup|good morning|good evening|good afternoon|greetings|what\'?s up)\b'
+        )
+        if _GREETING_RE.search(query_lower):
             if not measurements:
                 return {
                     "answer": (
@@ -415,9 +419,14 @@ class AIInsightsService:
             "Show last week summary",
         ]
 
-        # ── Helper: does query contain a whole word / phrase? ─────────────────
+        # ── Helpers ────────────────────────────────────────────────────────────
         def has(phrase: str) -> bool:
+            """Substring check — safe for multi-word phrases."""
             return phrase in query_lower
+
+        def has_word(word: str) -> bool:
+            """Word-boundary check — use for short words that appear inside others."""
+            return bool(re.search(r'\b' + re.escape(word) + r'\b', query_lower))
 
         def has_any(*phrases) -> bool:
             return any(p in query_lower for p in phrases)
@@ -523,8 +532,29 @@ class AIInsightsService:
                 "suggestions": suggestions,
             }
 
+        # Location / where am I connecting from
+        if has_any("where am i", "my location", "where is my connection", "what country",
+                   "what city", "where are you", "my city", "my country", "connection from"):
+            location = measurements[-1].location if measurements else None
+            lat = measurements[-1].latitude  if measurements else None
+            lon = measurements[-1].longitude if measurements else None
+            loc_str = location or "unknown"
+            geo_note = f" (approx. {lat:.2f}°, {lon:.2f}°)" if lat and lon else ""
+            isps = list({m.isp for m in measurements if m.isp})
+            return {
+                **base,
+                "answer": (
+                    f"📍 Your connection location: **{loc_str}**{geo_note}. "
+                    f"ISP detected: {', '.join(isps) if isps else 'unknown'}. "
+                    f"Speeds from this location: ↓{avg_download} Mbps / ↑{avg_upload} Mbps."
+                ),
+                "location": loc_str,
+                "isps_detected": isps,
+                "suggestions": suggestions,
+            }
+
         # Why slow / issues / bad connection
-        if has_any("slow", "bad", "why", "issue", "problem", "worse", "degrad", "not working"):
+        if has_any("slow", "why", "issue", "problem", "not working", "worse", "degrad") or has_word("bad"):
             result = self.analyze_root_cause(client_id, hours=48)
             if "error" in result:
                 answer = (
@@ -654,19 +684,35 @@ class AIInsightsService:
                 "suggestions": suggestions,
             }
 
-        # ISP / provider
-        if has_any("isp", "provider", "internet provider", "carrier", "network provider", "who is my isp"):
+        # ISP / provider — covers "which internet", "which provider", "what network am I on", etc.
+        if has_any(
+            "isp", "provider", "internet provider", "carrier", "network provider",
+            "who is my isp", "which internet", "what internet", "which provider",
+            "what provider", "who provides", "internet service", "what network",
+            "which network", "who is providing", "using for internet", "internet am i",
+            "am i using", "internet i'm", "internet i am",
+        ):
             isps = list({m.isp for m in measurements if m.isp})
-            isp_str = ", ".join(isps) if isps else "unknown"
+            isp_str = ", ".join(isps) if isps else "unknown (run a speed test to detect your ISP)"
+            last_isp = measurements[-1].isp if measurements else None
+            location = measurements[-1].location if measurements else None
+            isp_note = f" Your most recent connection was via **{last_isp}**." if last_isp else ""
+            loc_note  = f" Location detected: {location}." if location else ""
             return {
                 **base,
                 "answer": (
-                    f"Detected ISP(s): {isp_str}. "
-                    f"Over {total_tests} tests: ↓{avg_download} Mbps / ↑{avg_upload} Mbps, "
+                    f"🌐 Your Internet Service Provider: **{isp_str}**.{isp_note}{loc_note} "
+                    f"Performance over {total_tests} test(s): "
+                    f"↓{avg_download} Mbps / ↑{avg_upload} Mbps, "
                     f"{avg_ping} ms ping, {uptime_pct}% uptime."
                 ),
                 "isps_detected": isps,
-                "suggestions": suggestions,
+                "suggestions": [
+                    "How is my download speed?",
+                    "Check ISP community status",
+                    "Is my ISP throttling me?",
+                    "How is my ping?",
+                ],
             }
 
         # Router / maintenance
