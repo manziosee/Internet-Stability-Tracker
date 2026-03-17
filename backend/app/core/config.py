@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     SPEED_TEST_INTERVAL: int = 300              # seconds between auto-tests (if enabled)
     AUTO_SPEED_TEST: bool = False               # set True to enable background scheduler
     OUTAGE_THRESHOLD_MBPS: float = 1.0          # below this = outage
+    # Allow all origins so the browser extension (chrome-extension:// / moz-extension://)
+    # and any future mirror domains work without changes.  The real access control is
+    # per-device client_id scoping, rate limiting, and the admin API key.
     CORS_ORIGINS: List[str] = ["*"]
     MAX_HISTORY_HOURS: int = 168                # 7 days max for history queries
 

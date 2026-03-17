@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 import time
 from datetime import datetime, timedelta
@@ -27,7 +28,7 @@ def require_admin_key(x_admin_key: str = Header(default="")):
     expected = settings.ADMIN_API_KEY
     if not expected:
         raise HTTPException(status_code=503, detail="Admin operations are disabled on this server.")
-    if x_admin_key != expected:
+    if not hmac.compare_digest(x_admin_key.encode(), expected.encode()):
         raise HTTPException(status_code=403, detail="Forbidden — invalid admin key.")
 
 
