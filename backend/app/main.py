@@ -82,8 +82,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/api/reports":               (5,  60),   # 5 report submissions per minute
         "/api/measurements":          (3,  60),   # 3 delete calls per minute (admin-keyed anyway)
         "/api/my-connection":         (10, 60),   # 10 geo lookups per minute
+        "/api/packet-loss/run":       (10, 60),   # 10 packet-loss tests per minute
+        "/api/complaint-letter":      (10, 60),   # 10 letter generations per minute
+        "/api/dns-test":              (20, 60),   # 20 DNS tests per minute
+        "/api/devices/nearby":        (20, 60),   # 20 nearby scans per minute
         "default":                    (60, 60),   # 60 read requests per minute
     }
+
+    # Clean up stale rate-limit buckets every ~5 minutes to prevent unbounded memory growth
+    _last_cleanup: float = 0.0
+    _CLEANUP_INTERVAL = 300  # seconds
 
     async def dispatch(self, request: Request, call_next):
         ip        = request.client.host if request.client else "unknown"
@@ -96,6 +104,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         keys = [f"ip:{ip}:{path}"]
         if client_id:
             keys.append(f"cid:{client_id}:{path}")
+
+        # Periodic cleanup of stale buckets
+        if now - RateLimitMiddleware._last_cleanup > RateLimitMiddleware._CLEANUP_INTERVAL:
+            stale = [k for k, v in list(_rate_store.items()) if not v or now - v[-1] > 3600]
+            for k in stale:
+                del _rate_store[k]
+            RateLimitMiddleware._last_cleanup = now
 
         for key in keys:
             bucket = _rate_store[key]
@@ -169,6 +184,10 @@ async def lifespan(app: FastAPI):
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
 _is_prod = settings.ENVIRONMENT == "production"
+
+_docs_url   = None if _is_prod else "/docs"
+_redoc_url  = None if _is_prod else "/redoc"
+_openapi_url = None if _is_prod else "/openapi.json"
 
 app = FastAPI(
     title="Internet Stability Tracker API",
@@ -318,9 +337,9 @@ Import `postman_collection.json` from the repo root — pre-configured to hit th
         {"name": "wfh",          "description": "Work-From-Home connection quality score"},
     ],
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # ── Global exception handler ──────────────────────────────────────────────────

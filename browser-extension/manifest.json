@@ -1,8 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Internet Stability Tracker",
+  "name": "NetPulse - Internet Speed & Stability Tracker",
+  "short_name": "NetPulse",
   "version": "1.3.0",
-  "description": "Monitor your internet speed, detect outages, and track network stability — auto tests, live badge, sparkline history. Works in Chrome, Firefox, Edge, Brave, and Opera.",
+  "description": "Real-time internet speed monitor & outage detector. Auto speed tests, live badge, health score, ISP tracker, ping & packet loss monitor, WFH score. Works in Chrome, Firefox, Edge, Brave, Opera.",
+
+  "homepage_url": "https://internet-stability-tracker.vercel.app",
+  "keywords": ["internet speed", "speed test", "network monitor", "outage detector", "ping", "wifi", "ISP tracker", "packet loss", "WFH"],
 
   "permissions": [
     "storage",
@@ -30,7 +34,7 @@
       "48":  "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "Internet Stability Tracker"
+    "default_title": "NetPulse - Internet Speed & Stability Tracker"
   },
 
   "options_ui": {
