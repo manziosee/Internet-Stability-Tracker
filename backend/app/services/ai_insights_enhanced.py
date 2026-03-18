@@ -33,59 +33,76 @@ class AIInsightsService:
         causes = []
         confidence_scores = []
         
+        total = max(len(measurements), 1)
         slow_measurements = [m for m in measurements if m.download_speed and m.download_speed < avg_download * 0.5]
-        if len(slow_measurements) > len(measurements) * 0.3:
-            hour_distribution = {}
+        if len(slow_measurements) > total * 0.3:
+            hour_distribution: Dict[int, int] = {}
             for m in slow_measurements:
                 hour = m.timestamp.hour
                 hour_distribution[hour] = hour_distribution.get(hour, 0) + 1
-            
+
             if hour_distribution:
                 peak_hour = max(hour_distribution, key=hour_distribution.get)
+                slow_ratio    = len(slow_measurements) / total
+                hour_dominance = hour_distribution[peak_hour] / max(len(slow_measurements), 1)
+                conf = min(95, int(50 + slow_ratio * 25 + hour_dominance * 25))
                 if 18 <= peak_hour <= 23:
                     causes.append("Network congestion during peak hours (6 PM - 11 PM)")
-                    confidence_scores.append(85)
+                    confidence_scores.append(conf)
                 elif 8 <= peak_hour <= 17:
                     causes.append("Daytime congestion (work hours)")
-                    confidence_scores.append(75)
-        
+                    confidence_scores.append(max(40, conf - 10))
+
         high_ping_count = len([m for m in measurements if m.ping and m.ping > 100])
-        if high_ping_count > len(measurements) * 0.4:
+        if high_ping_count > total * 0.4:
+            ping_ratio = high_ping_count / total
+            conf = min(95, int(50 + ping_ratio * 50))
             causes.append("High latency - possible ISP routing issues or distance to server")
-            confidence_scores.append(80)
-        
+            confidence_scores.append(conf)
+
         if measurements:
             recent_speeds = [m.download_speed for m in measurements[:10] if m.download_speed]
-            older_speeds = [m.download_speed for m in measurements[-10:] if m.download_speed]
-            
+            older_speeds  = [m.download_speed for m in measurements[-10:] if m.download_speed]
+
             if recent_speeds and older_speeds:
                 recent_avg = statistics.mean(recent_speeds)
-                older_avg = statistics.mean(older_speeds)
-                
+                older_avg  = statistics.mean(older_speeds)
+
                 if recent_avg < older_avg * 0.7:
+                    degradation = max(0.0, (older_avg - recent_avg) / max(older_avg, 1))
+                    conf = min(95, int(40 + degradation * 200))
                     causes.append("Progressive speed degradation - router may need reboot")
-                    confidence_scores.append(70)
-        
-        weekend_speeds = []
-        weekday_speeds = []
+                    confidence_scores.append(conf)
+
+        weekend_speeds: List[float] = []
+        weekday_speeds: List[float] = []
         for m in measurements:
             if m.download_speed:
                 if m.timestamp.weekday() >= 5:
                     weekend_speeds.append(m.download_speed)
                 else:
                     weekday_speeds.append(m.download_speed)
-        
+
         if weekend_speeds and weekday_speeds:
             weekend_avg = statistics.mean(weekend_speeds)
             weekday_avg = statistics.mean(weekday_speeds)
-            
+
             if weekday_avg < weekend_avg * 0.8:
+                gap  = max(0.0, (weekend_avg - weekday_avg) / max(weekend_avg, 1))
+                conf = min(92, int(40 + gap * 180))
                 causes.append("Weekday slowdown - shared bandwidth in residential area")
-                confidence_scores.append(65)
-        
+                confidence_scores.append(conf)
+
         if not causes:
+            # Derive confidence from consistency: low coefficient of variation = high confidence
+            dl_vals = [m.download_speed for m in measurements if m.download_speed]
+            try:
+                cv = statistics.stdev(dl_vals) / max(statistics.mean(dl_vals), 1) if len(dl_vals) > 1 else 0
+                conf = min(98, int(78 + (1 - min(cv, 1)) * 20))
+            except Exception:
+                conf = 82
             causes.append("No specific issues detected - speeds within normal range")
-            confidence_scores.append(90)
+            confidence_scores.append(conf)
         
         recommendations = self._generate_recommendations(causes)
         
@@ -154,19 +171,21 @@ class AIInsightsService:
         
         needs_reboot = False
         days_until_reboot = None
-        confidence = 0
-        
+
+        # Confidence scales with sample count (more data = more trustworthy) and trend strength
+        sample_factor = min(1.0, len(measurements) / 200)
+        trend_strength = min(1.0, abs(degradation_rate) * 3)
+        confidence = int(30 + sample_factor * 35 + trend_strength * 35)
+
         if degradation_rate > 0.3:
             needs_reboot = True
-            days_until_reboot = 2
-            confidence = 85
+            # Interpolate: steeper degradation → fewer days before action needed
+            days_until_reboot = max(1, round(0.6 / degradation_rate))
         elif degradation_rate > 0.2:
             needs_reboot = True
-            days_until_reboot = 5
-            confidence = 70
+            days_until_reboot = max(2, round(0.6 / degradation_rate))
         elif degradation_rate > 0.1:
-            days_until_reboot = 10
-            confidence = 55
+            days_until_reboot = max(4, round(0.6 / degradation_rate))
         
         uptime_estimate = self._estimate_uptime(measurements)
         
