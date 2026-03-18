@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Internet Stability Tracker API v3.3",
-    "description": "Complete API collection for Internet Stability Tracker v3.3 — advanced network monitoring with AI insights, security auditing, real-time diagnostics, and multi-device support.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3.3\n- ISP Contract Tracker — save plan details, track SLA compliance\n- Network Quality Certificate — printable A+→F grade certificate\n- Best Time Recommender — 24-hour speed profile with activity suggestions\n- Multi-Device Aggregator — link devices via WiFi network code (no Bluetooth), QR + 6-char code\n- DNS Monitor — per-resolver latency test\n- ISP Complaint Letter Generator — auto-generate formal letter from your data\n- Scheduled Speed Tests — recurring tests by hour/day with burst support\n- Packet Loss & Jitter Monitor — TCP-based measurement with history\n- WFH Score — work-from-home suitability across 8 apps\n- Uptime Calendar — 90-day daily uptime heatmap\n- ISP Community Status — aggregate ISP health across all users\n- Speed Trend — multi-week improving/stable/declining trend",
+    "name": "Internet Stability Tracker API v3.4",
+    "description": "Complete API collection for Internet Stability Tracker v3.4 \u2014 advanced network monitoring with AI insights, security auditing, real-time diagnostics, and multi-device support.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n- **Production**: https://backend-cold-butterfly-9535.fly.dev/docs\n- **Local**: http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3.4\n- Internet Crisis Monitor \u2014 combined local+global crisis detection, 7 status providers, IODA BGP, history, community impact\n\n## New in v3.3\n- ISP Contract Tracker \u2014 save plan details, track SLA compliance\n- Network Quality Certificate \u2014 printable A+\u2192F grade certificate\n- Best Time Recommender \u2014 24-hour speed profile with activity suggestions\n- Multi-Device Aggregator \u2014 link devices via WiFi network code (no Bluetooth), QR + 6-char code\n- DNS Monitor \u2014 per-resolver latency test\n- ISP Complaint Letter Generator \u2014 auto-generate formal letter from your data\n- Scheduled Speed Tests \u2014 recurring tests by hour/day with burst support\n- Packet Loss & Jitter Monitor \u2014 TCP-based measurement with history\n- WFH Score \u2014 work-from-home suitability across 8 apps\n- Uptime Calendar \u2014 90-day daily uptime heatmap\n- ISP Community Status \u2014 aggregate ISP health across all users\n- Speed Trend \u2014 multi-week improving/stable/declining trend",
     "version": "3.3.0",
     "_postman_id": "ist-api-v3",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -17,19 +17,19 @@
       "key": "client_id",
       "value": "00000000-0000-0000-0000-000000000001",
       "type": "string",
-      "description": "Device UUID — update to match your browser's stored X-Client-ID"
+      "description": "Device UUID \u2014 update to match your browser's stored X-Client-ID"
     },
     {
       "key": "report_id",
       "value": "1",
       "type": "string",
-      "description": "ID of a community report — update after creating one"
+      "description": "ID of a community report \u2014 update after creating one"
     },
     {
       "key": "webhook_id",
       "value": "1",
       "type": "string",
-      "description": "ID of a registered webhook — update after calling POST /webhooks"
+      "description": "ID of a registered webhook \u2014 update after calling POST /webhooks"
     }
   ],
   "item": [
@@ -40,7 +40,9 @@
           "name": "Health check",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/../health" },
+            "url": {
+              "raw": "{{base_url}}/../health"
+            },
             "description": "Returns service status, UTC timestamp, and environment."
           },
           "response": [
@@ -61,8 +63,15 @@
           "name": "Run speed test now",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/test-now" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/test-now"
+            },
             "description": "Triggers an immediate speed test. Rate limited: 5 req/60s."
           }
         },
@@ -70,8 +79,15 @@
           "name": "My Connection info",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/my-connection" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/my-connection"
+            },
             "description": "Returns public IP, ISP, ASN, org, country, region, city, lat/lon, and last speed test."
           }
         }
@@ -84,12 +100,23 @@
           "name": "List measurements",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/measurements?skip=0&limit=50",
               "query": [
-                { "key": "skip", "value": "0" },
-                { "key": "limit", "value": "50" }
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
               ]
             }
           }
@@ -98,10 +125,20 @@
           "name": "Recent measurements",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/measurements/recent?hours=24",
-              "query": [{ "key": "hours", "value": "24" }]
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
             }
           }
         },
@@ -110,10 +147,18 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "X-Admin-Key", "value": "your-admin-key-here" },
-              { "key": "X-Client-ID", "value": "{{client_id}}" }
+              {
+                "key": "X-Admin-Key",
+                "value": "your-admin-key-here"
+              },
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/measurements" },
+            "url": {
+              "raw": "{{base_url}}/measurements"
+            },
             "description": "Requires admin API key. Rate limited: 3 req/60s."
           }
         }
@@ -126,10 +171,20 @@
           "name": "Aggregated statistics",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/stats?hours=24",
-              "query": [{ "key": "hours", "value": "24" }]
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
             }
           }
         },
@@ -137,15 +192,24 @@
           "name": "Connection quality score",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/quality-score" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quality-score"
+            }
           }
         },
         {
           "name": "Global network status",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/global-status" }
+            "url": {
+              "raw": "{{base_url}}/global-status"
+            }
           }
         }
       ]
@@ -157,18 +221,35 @@
           "name": "Current outage status",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/outage-status" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/outage-status"
+            }
           }
         },
         {
           "name": "Outage events list",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/outage-events?limit=20",
-              "query": [{ "key": "limit", "value": "20" }]
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
             }
           }
         },
@@ -176,8 +257,15 @@
           "name": "Outage confidence score",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/outage-confidence" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/outage-confidence"
+            }
           }
         }
       ]
@@ -192,8 +280,14 @@
             "url": {
               "raw": "{{base_url}}/reports?skip=0&limit=20",
               "query": [
-                { "key": "skip", "value": "0" },
-                { "key": "limit", "value": "20" }
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -203,37 +297,61 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID", "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"isp\": \"My ISP\",\n  \"location\": \"Kigali, Rwanda\",\n  \"issue_type\": \"outage\",\n  \"description\": \"Complete internet outage since 9am\"\n}"
             },
-            "url": { "raw": "{{base_url}}/reports" }
+            "url": {
+              "raw": "{{base_url}}/reports"
+            }
           }
         },
         {
           "name": "Get single report",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/reports/{{report_id}}" }
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}"
+            }
           }
         },
         {
           "name": "Confirm report",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/reports/{{report_id}}/confirm" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}/confirm"
+            }
           }
         },
         {
           "name": "Reject report",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/reports/{{report_id}}/reject" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/{{report_id}}/reject"
+            }
           }
         }
       ]
@@ -245,14 +363,18 @@
           "name": "ISP comparison",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/isp-comparison" }
+            "url": {
+              "raw": "{{base_url}}/isp-comparison"
+            }
           }
         },
         {
           "name": "ISP reliability rankings",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/isp-reliability" }
+            "url": {
+              "raw": "{{base_url}}/isp-reliability"
+            }
           }
         }
       ]
@@ -264,10 +386,21 @@
           "name": "Gaming metrics",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/gaming-metrics?hours=1",
-              "query": [{ "key": "hours", "value": "1", "description": "Analyze last N hours (1-24)" }]
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "1",
+                  "description": "Analyze last N hours (1-24)"
+                }
+              ]
             },
             "description": "Returns gaming score (0-100), grade (A+ to F), per-game recommendations, ping/jitter/packet-loss."
           }
@@ -276,8 +409,15 @@
           "name": "Video call quality",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/video-call-quality" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/video-call-quality"
+            },
             "description": "Predicts HD/SD quality and max participants for Zoom, Teams, Google Meet."
           }
         },
@@ -285,8 +425,15 @@
           "name": "Router health",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/router-health" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/router-health"
+            },
             "description": "Detects if router needs a reboot based on 24h performance trends. Requires 5+ tests."
           }
         },
@@ -294,8 +441,15 @@
           "name": "Activity recommendations",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/activity-recommendations" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/activity-recommendations"
+            },
             "description": "What can I do? Returns recommended and not-recommended activities based on current speed/ping."
           }
         },
@@ -303,8 +457,15 @@
           "name": "Is it just me?",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/is-it-just-me" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/is-it-just-me"
+            },
             "description": "Checks external services (Google, Cloudflare, AWS) and compares with other ISP users."
           }
         }
@@ -317,7 +478,9 @@
           "name": "Run all diagnostics",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/diagnostics/advanced" },
+            "url": {
+              "raw": "{{base_url}}/diagnostics/advanced"
+            },
             "description": "Runs packet loss, jitter, bufferbloat, MTU, and DNS leak tests in parallel."
           }
         },
@@ -328,8 +491,14 @@
             "url": {
               "raw": "{{base_url}}/diagnostics/packet-loss?host=8.8.8.8&count=20",
               "query": [
-                { "key": "host", "value": "8.8.8.8" },
-                { "key": "count", "value": "20" }
+                {
+                  "key": "host",
+                  "value": "8.8.8.8"
+                },
+                {
+                  "key": "count",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -341,8 +510,14 @@
             "url": {
               "raw": "{{base_url}}/diagnostics/jitter?host=8.8.8.8&samples=30",
               "query": [
-                { "key": "host", "value": "8.8.8.8" },
-                { "key": "samples", "value": "30" }
+                {
+                  "key": "host",
+                  "value": "8.8.8.8"
+                },
+                {
+                  "key": "samples",
+                  "value": "30"
+                }
               ]
             }
           }
@@ -351,7 +526,9 @@
           "name": "Bufferbloat",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/diagnostics/bufferbloat" }
+            "url": {
+              "raw": "{{base_url}}/diagnostics/bufferbloat"
+            }
           }
         },
         {
@@ -360,7 +537,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/diagnostics/mtu?host=8.8.8.8",
-              "query": [{ "key": "host", "value": "8.8.8.8" }]
+              "query": [
+                {
+                  "key": "host",
+                  "value": "8.8.8.8"
+                }
+              ]
             }
           }
         },
@@ -368,7 +550,9 @@
           "name": "DNS leak test",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/diagnostics/dns-leak" },
+            "url": {
+              "raw": "{{base_url}}/diagnostics/dns-leak"
+            },
             "description": "Checks if DNS resolver is a known secure provider (1.1.1.1, 8.8.8.8, 9.9.9.9, etc.)."
           }
         },
@@ -379,8 +563,12 @@
             "url": {
               "raw": "{{base_url}}/diagnostics/vpn-speed",
               "query": [
-                { "key": "vpn_interface", "value": "tun0", "disabled": true,
-                  "description": "Optional: specify VPN interface name (tun0, wg0, ppp0)" }
+                {
+                  "key": "vpn_interface",
+                  "value": "tun0",
+                  "disabled": true,
+                  "description": "Optional: specify VPN interface name (tun0, wg0, ppp0)"
+                }
               ]
             }
           }
@@ -394,7 +582,9 @@
           "name": "Full security audit",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/security/audit" },
+            "url": {
+              "raw": "{{base_url}}/security/audit"
+            },
             "description": "Runs port scan, privacy score, intrusion detection, and VPN recommendation in parallel."
           }
         },
@@ -404,7 +594,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/security/port-scan?target=127.0.0.1",
-              "query": [{ "key": "target", "value": "127.0.0.1" }]
+              "query": [
+                {
+                  "key": "target",
+                  "value": "127.0.0.1"
+                }
+              ]
             }
           }
         },
@@ -412,14 +607,18 @@
           "name": "Privacy score",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/security/privacy-score" }
+            "url": {
+              "raw": "{{base_url}}/security/privacy-score"
+            }
           }
         },
         {
           "name": "VPN recommendation",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/security/vpn-recommendation" }
+            "url": {
+              "raw": "{{base_url}}/security/vpn-recommendation"
+            }
           }
         }
       ]
@@ -428,45 +627,84 @@
       "name": "Historical Visualization",
       "item": [
         {
-          "name": "Heatmap (7×24 grid)",
+          "name": "Heatmap (7\u00d724 grid)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/historical/heatmap" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/historical/heatmap"
+            }
           }
         },
         {
           "name": "Speed distribution",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/historical/distribution" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/historical/distribution"
+            }
           }
         },
         {
           "name": "Percentiles (p5, p25, p50, p75, p95)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/historical/percentiles" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/historical/percentiles"
+            }
           }
         },
         {
           "name": "Speed vs ping correlation",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/historical/correlation" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/historical/correlation"
+            }
           }
         },
         {
           "name": "Timeline",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/historical/timeline?hours=168",
-              "query": [{ "key": "hours", "value": "168", "description": "Last 7 days" }]
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "168",
+                  "description": "Last 7 days"
+                }
+              ]
             }
           }
         }
@@ -479,138 +717,257 @@
           "name": "7-day AI insights",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/ai-insights" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ai-insights"
+            }
           }
         },
         {
           "name": "24h AI insights",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/ai-insights/24h" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ai-insights/24h"
+            }
           }
         },
         {
           "name": "Root cause analysis",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/ai-insights/root-cause" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ai-insights/root-cause"
+            }
           }
         },
         {
           "name": "Predictive maintenance",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/ai-insights/predictive-maintenance" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ai-insights/predictive-maintenance"
+            }
           }
         },
         {
           "name": "Anomaly detection",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/anomalies" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/anomalies"
+            }
           }
         },
         {
-          "name": "AI chatbot — why slow",
+          "name": "AI chatbot \u2014 why slow",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=Why+is+my+internet+slow",
-              "query": [{ "key": "q", "value": "Why is my internet slow" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Why is my internet slow"
+                }
+              ]
             },
             "description": "Runs root cause analysis and returns answer + root_causes + recommendations."
           }
         },
         {
-          "name": "AI chatbot — upload speed",
+          "name": "AI chatbot \u2014 upload speed",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=How+is+my+upload+speed",
-              "query": [{ "key": "q", "value": "How is my upload speed" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "How is my upload speed"
+                }
+              ]
             },
             "description": "Returns focused upload speed analysis: avg, peak, quality label, tip."
           }
         },
         {
-          "name": "AI chatbot — download speed",
+          "name": "AI chatbot \u2014 download speed",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=How+is+my+download+speed",
-              "query": [{ "key": "q", "value": "How is my download speed" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "How is my download speed"
+                }
+              ]
             }
           }
         },
         {
-          "name": "AI chatbot — compare upload vs download",
+          "name": "AI chatbot \u2014 compare upload vs download",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=Compare+my+upload+vs+download",
-              "query": [{ "key": "q", "value": "Compare my upload vs download" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Compare my upload vs download"
+                }
+              ]
             },
             "description": "Returns upload/download ratio, connection type (symmetric/download-heavy/upload-heavy), and peak values."
           }
         },
         {
-          "name": "AI chatbot — best time to use internet",
+          "name": "AI chatbot \u2014 best time to use internet",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=When+is+the+best+time+to+use+my+internet",
-              "query": [{ "key": "q", "value": "When is the best time to use my internet" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "When is the best time to use my internet"
+                }
+              ]
             }
           }
         },
         {
-          "name": "AI chatbot — gaming suitability",
+          "name": "AI chatbot \u2014 gaming suitability",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=Is+my+connection+good+for+gaming",
-              "query": [{ "key": "q", "value": "Is my connection good for gaming" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Is my connection good for gaming"
+                }
+              ]
             },
             "description": "Returns A-D gaming grade, ping quality, and suitability verdict."
           }
         },
         {
-          "name": "AI chatbot — greeting",
+          "name": "AI chatbot \u2014 greeting",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/insights/query?q=hello",
-              "query": [{ "key": "q", "value": "hello" }]
+              "query": [
+                {
+                  "key": "q",
+                  "value": "hello"
+                }
+              ]
             },
-            "description": "Greeting response — returns friendly welcome + live stats snapshot."
+            "description": "Greeting response \u2014 returns friendly welcome + live stats snapshot."
           }
         },
         {
           "name": "Congestion heatmap",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/congestion-heatmap" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/congestion-heatmap"
+            }
           }
         },
         {
           "name": "Week-over-week comparison",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/comparison" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/comparison"
+            }
           }
         }
       ]
@@ -622,26 +979,50 @@
           "name": "Predict next hour speed",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/predictions/next-hour" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/predictions/next-hour"
+            }
           }
         },
         {
           "name": "Outage probability",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/predictions/outage-probability" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/predictions/outage-probability"
+            }
           }
         },
         {
           "name": "Best download time",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/predictions/best-download-time?hours_ahead=24",
-              "query": [{ "key": "hours_ahead", "value": "24" }]
+              "query": [
+                {
+                  "key": "hours_ahead",
+                  "value": "24"
+                }
+              ]
             },
             "description": "Returns top 3 best hours to download in the next N hours. Uses day-of-week weighted historical patterns."
           }
@@ -650,17 +1031,31 @@
           "name": "24h congestion forecast",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/predictions/congestion-24h" },
-            "description": "Hourly congestion scores (0-100) for next 24 hours. Includes notable_periods with human-readable descriptions like 'Evening congestion (7 PM-11 PM) — 35% slower'."
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/predictions/congestion-24h"
+            },
+            "description": "Hourly congestion scores (0-100) for next 24 hours. Includes notable_periods with human-readable descriptions like 'Evening congestion (7 PM-11 PM) \u2014 35% slower'."
           }
         },
         {
           "name": "Prediction summary (all-in-one)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/predictions/summary" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/predictions/summary"
+            },
             "description": "Single endpoint returning all four predictions plus a headline summary. Includes data_quality: insufficient/limited/good."
           }
         }
@@ -673,8 +1068,15 @@
           "name": "Get alert config",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/alerts/config" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/alerts/config"
+            }
           }
         },
         {
@@ -682,32 +1084,57 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID", "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"enabled\": true,\n  \"min_download_speed\": 5.0,\n  \"max_ping\": 200,\n  \"telegram_enabled\": false,\n  \"discord_enabled\": false,\n  \"quiet_hours_enabled\": false\n}"
             },
-            "url": { "raw": "{{base_url}}/alerts/config" }
+            "url": {
+              "raw": "{{base_url}}/alerts/config"
+            }
           }
         },
         {
           "name": "Send test alert",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/alerts/test" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/alerts/test"
+            }
           }
         },
         {
           "name": "Alert log",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/alerts/log?limit=50",
-              "query": [{ "key": "limit", "value": "50" }]
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
             },
             "description": "Returns last N alert delivery records for this device (success/failure, channel, severity)."
           }
@@ -721,8 +1148,15 @@
           "name": "List webhooks",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/webhooks" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/webhooks"
+            },
             "description": "Returns all active webhooks registered for this device (max 5)."
           }
         },
@@ -731,14 +1165,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID", "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"url\": \"https://your-service.com/webhook\",\n  \"secret\": \"optional-signing-secret\",\n  \"events\": [\"outage\", \"speed_drop\", \"recovery\"]\n}"
             },
-            "url": { "raw": "{{base_url}}/webhooks" },
+            "url": {
+              "raw": "{{base_url}}/webhooks"
+            },
             "description": "Register a URL to receive JSON payloads on outage, speed_drop, and recovery events. Max 5 webhooks per device."
           }
         },
@@ -746,8 +1188,15 @@
           "name": "Delete webhook",
           "request": {
             "method": "DELETE",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/webhooks/{{webhook_id}}" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}"
+            },
             "description": "Permanently removes a webhook. Only the owning device can delete it."
           }
         },
@@ -755,8 +1204,15 @@
           "name": "Test webhook",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/webhooks/test/{{webhook_id}}" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/webhooks/test/{{webhook_id}}"
+            },
             "description": "Sends a test payload to the webhook URL and returns HTTP status code."
           }
         }
@@ -769,7 +1225,9 @@
           "name": "Prometheus metrics",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/metrics" },
+            "url": {
+              "raw": "{{base_url}}/metrics"
+            },
             "description": "Returns plain-text Prometheus metrics: total measurements, outages, reports, 24h avg download/upload/ping. Scrape with Grafana or any Prometheus-compatible stack."
           }
         }
@@ -782,8 +1240,15 @@
           "name": "Get preferences",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/user-preferences" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user-preferences"
+            }
           }
         },
         {
@@ -791,14 +1256,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID", "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"theme\": \"dark\",\n  \"dashboard_layout\": \"default\",\n  \"metrics\": [\"download\", \"upload\", \"ping\"]\n}"
             },
-            "url": { "raw": "{{base_url}}/user-preferences" }
+            "url": {
+              "raw": "{{base_url}}/user-preferences"
+            }
           }
         }
       ]
@@ -810,14 +1283,35 @@
           "name": "Analyze ISP SLA compliance",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/sla/analyze?promised_download=100&promised_upload=20&promised_ping=30&window_days=30",
               "query": [
-                { "key": "promised_download", "value": "100", "description": "ISP promised download speed in Mbps" },
-                { "key": "promised_upload",   "value": "20",  "description": "ISP promised upload speed in Mbps" },
-                { "key": "promised_ping",     "value": "30",  "description": "ISP promised ping in ms" },
-                { "key": "window_days",       "value": "30",  "description": "Analysis window in days" }
+                {
+                  "key": "promised_download",
+                  "value": "100",
+                  "description": "ISP promised download speed in Mbps"
+                },
+                {
+                  "key": "promised_upload",
+                  "value": "20",
+                  "description": "ISP promised upload speed in Mbps"
+                },
+                {
+                  "key": "promised_ping",
+                  "value": "30",
+                  "description": "ISP promised ping in ms"
+                },
+                {
+                  "key": "window_days",
+                  "value": "30",
+                  "description": "Analysis window in days"
+                }
               ]
             },
             "description": "Compares actual measured speeds against ISP promised speeds. Returns compliance %, grade (A-F), and per-metric stats (avg/min/max/p10/p90). SLA met = 80% of promised speed threshold."
@@ -836,7 +1330,11 @@
             "url": {
               "raw": "{{base_url}}/throttle/detect?baseline_mbps=0",
               "query": [
-                { "key": "baseline_mbps", "value": "0", "description": "Optional known baseline speed. 0 = auto-detect from DB" }
+                {
+                  "key": "baseline_mbps",
+                  "value": "0",
+                  "description": "Optional known baseline speed. 0 = auto-detect from DB"
+                }
               ]
             },
             "description": "Probes 4 CDN endpoints (Cloudflare, jsDelivr, Google CDN, Fastly) in parallel. Returns is_throttled, confidence, avg/min/max Mbps, and per-probe results. Ratio < 0.4 vs baseline = throttled."
@@ -851,14 +1349,23 @@
           "name": "Get composite health score",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/health-score?window_days=7",
               "query": [
-                { "key": "window_days", "value": "7", "description": "Analysis window in days" }
+                {
+                  "key": "window_days",
+                  "value": "7",
+                  "description": "Analysis window in days"
+                }
               ]
             },
-            "description": "Returns 0–100 score with letter grade (A+/A/B/C/D/F). Weighted: download 25%, upload 20%, ping 25%, stability 15%, uptime 15%. Includes breakdown per metric and actionable tips."
+            "description": "Returns 0\u2013100 score with letter grade (A+/A/B/C/D/F). Weighted: download 25%, upload 20%, ping 25%, stability 15%, uptime 15%. Includes breakdown per metric and actionable tips."
           }
         }
       ]
@@ -870,8 +1377,15 @@
           "name": "Generate weekly network report",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/reports/weekly" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/weekly"
+            },
             "description": "Natural-language weekly summary comparing last 7 days vs previous 7 days. Returns headline, narrative, week1/week2 stats, deltas, best/worst hour, outage count, and improvement tips."
           }
         }
@@ -884,13 +1398,30 @@
           "name": "Calculate cost per Mbps",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/cost-calculator?monthly_cost_usd=50&plan_download_mbps=100&plan_upload_mbps=20",
               "query": [
-                { "key": "monthly_cost_usd",   "value": "50",  "description": "Monthly ISP bill in USD" },
-                { "key": "plan_download_mbps", "value": "100", "description": "Plan promised download in Mbps" },
-                { "key": "plan_upload_mbps",   "value": "20",  "description": "Plan promised upload in Mbps" }
+                {
+                  "key": "monthly_cost_usd",
+                  "value": "50",
+                  "description": "Monthly ISP bill in USD"
+                },
+                {
+                  "key": "plan_download_mbps",
+                  "value": "100",
+                  "description": "Plan promised download in Mbps"
+                },
+                {
+                  "key": "plan_upload_mbps",
+                  "value": "20",
+                  "description": "Plan promised upload in Mbps"
+                }
               ]
             },
             "description": "Returns cost_per_plan_mbps, cost_per_actual_mbps, efficiency rating (good/average/poor), benchmark vs US avg ($0.47/Mbps) and global avg ($0.65/Mbps), and a verdict string."
@@ -905,14 +1436,35 @@
           "name": "Compare two date ranges",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/comparison/before-after?before_start=2026-01-01&before_end=2026-01-31&after_start=2026-02-01&after_end=2026-02-28",
               "query": [
-                { "key": "before_start", "value": "2026-01-01", "description": "Start of 'before' period (ISO 8601)" },
-                { "key": "before_end",   "value": "2026-01-31", "description": "End of 'before' period (ISO 8601)" },
-                { "key": "after_start",  "value": "2026-02-01", "description": "Start of 'after' period (ISO 8601)" },
-                { "key": "after_end",    "value": "2026-02-28", "description": "End of 'after' period (ISO 8601)" }
+                {
+                  "key": "before_start",
+                  "value": "2026-01-01",
+                  "description": "Start of 'before' period (ISO 8601)"
+                },
+                {
+                  "key": "before_end",
+                  "value": "2026-01-31",
+                  "description": "End of 'before' period (ISO 8601)"
+                },
+                {
+                  "key": "after_start",
+                  "value": "2026-02-01",
+                  "description": "Start of 'after' period (ISO 8601)"
+                },
+                {
+                  "key": "after_end",
+                  "value": "2026-02-28",
+                  "description": "End of 'after' period (ISO 8601)"
+                }
               ]
             },
             "description": "Compares avg download/upload/ping between two date ranges. Returns deltas as % change and a verdict (Improvement/Declined/No change). Omit all params to compare last 30d vs previous 30d."
@@ -931,8 +1483,15 @@
             "url": {
               "raw": "{{base_url}}/leaderboard?metric=download&limit=20",
               "query": [
-                { "key": "metric", "value": "download", "description": "download or upload" },
-                { "key": "limit",  "value": "20" }
+                {
+                  "key": "metric",
+                  "value": "download",
+                  "description": "download or upload"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -945,8 +1504,14 @@
             "url": {
               "raw": "{{base_url}}/leaderboard?metric=upload&limit=20",
               "query": [
-                { "key": "metric", "value": "upload" },
-                { "key": "limit",  "value": "20" }
+                {
+                  "key": "metric",
+                  "value": "upload"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -956,14 +1521,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID",  "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"display_name\": \"SpeedDemon99\"\n}"
             },
-            "url": { "raw": "{{base_url}}/leaderboard/submit" },
+            "url": {
+              "raw": "{{base_url}}/leaderboard/submit"
+            },
             "description": "Finds the device's personal best download and upload speeds and upserts a leaderboard entry. Requires X-Client-ID. Max one entry per device."
           }
         }
@@ -976,10 +1549,21 @@
           "name": "Export CSV",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/export/csv?days=30",
-              "query": [{ "key": "days", "value": "30", "description": "Number of days to export" }]
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Number of days to export"
+                }
+              ]
             },
             "description": "Downloads a CSV file with all measurements. Response Content-Type: text/csv; filename: speed_data_{date}.csv. Use 'Send and Download' in Postman."
           }
@@ -988,10 +1572,20 @@
           "name": "Export JSON",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/export/json?days=30",
-              "query": [{ "key": "days", "value": "30" }]
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
             },
             "description": "Downloads a JSON file with all measurements plus export metadata (device, exported_at, total_records). Use 'Send and Download' in Postman."
           }
@@ -1005,8 +1599,15 @@
           "name": "List API keys",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/api-keys" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api-keys"
+            },
             "description": "Returns all active API keys for this device (label, created_at, last_used, is_active). Raw key is never shown after creation."
           }
         },
@@ -1015,23 +1616,38 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID",  "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"label\": \"My App Key\"\n}"
             },
-            "url": { "raw": "{{base_url}}/api-keys" },
-            "description": "Generates a new API key (UUID v4). The raw key is returned ONCE in the response — store it securely. Only the SHA-256 hash is stored in the database. Max 5 keys per device."
+            "url": {
+              "raw": "{{base_url}}/api-keys"
+            },
+            "description": "Generates a new API key (UUID v4). The raw key is returned ONCE in the response \u2014 store it securely. Only the SHA-256 hash is stored in the database. Max 5 keys per device."
           }
         },
         {
           "name": "Revoke API key",
           "request": {
             "method": "DELETE",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/api-keys/KEY_ID_HERE" },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api-keys/KEY_ID_HERE"
+            },
             "description": "Permanently deactivates an API key. Replace KEY_ID_HERE with the numeric key ID from the list endpoint."
           }
         }
@@ -1044,10 +1660,21 @@
           "name": "Get ISP report card",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/isp-report-card?days=30",
-              "query": [{ "key": "days", "value": "30", "description": "Analysis window in days" }]
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Analysis window in days"
+                }
+              ]
             },
             "description": "Returns a per-ISP report card with grades (A-F) for download, upload, ping, and uptime over the specified window. Sourced from community measurements."
           }
@@ -1062,14 +1689,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID",  "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"webhook_url\": \"https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK\",\n  \"platform\": \"slack\"\n}"
             },
-            "url": { "raw": "{{base_url}}/integrations/test-webhook" },
+            "url": {
+              "raw": "{{base_url}}/integrations/test-webhook"
+            },
             "description": "Sends a test message to a Slack incoming webhook. Set platform to 'slack' or 'teams'. Returns http_status and success boolean."
           }
         },
@@ -1078,14 +1713,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Client-ID",  "value": "{{client_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"webhook_url\": \"https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK\",\n  \"platform\": \"teams\"\n}"
             },
-            "url": { "raw": "{{base_url}}/integrations/test-webhook" },
+            "url": {
+              "raw": "{{base_url}}/integrations/test-webhook"
+            },
             "description": "Sends a test Adaptive Card message to a Microsoft Teams incoming webhook."
           }
         }
@@ -1098,23 +1741,44 @@
           "name": "Uptime Calendar (90-day)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/uptime-calendar?days=90",
-              "query": [{ "key": "days", "value": "90", "description": "Number of days (7–365)" }]
+              "query": [
+                {
+                  "key": "days",
+                  "value": "90",
+                  "description": "Number of days (7\u2013365)"
+                }
+              ]
             },
-            "description": "Returns a day-by-day uptime % grid for GitHub-style heatmap visualization. Each day has: date, uptime_pct, total tests, outage count, level (0–3). Also returns summary: avg_uptime_pct, perfect_days, outage_days, tracked_days."
+            "description": "Returns a day-by-day uptime % grid for GitHub-style heatmap visualization. Each day has: date, uptime_pct, total tests, outage count, level (0\u20133). Also returns summary: avg_uptime_pct, perfect_days, outage_days, tracked_days."
           }
         },
         {
           "name": "ISP Community Status",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/isp-community-status",
               "query": [
-                { "key": "isp_name", "value": "MTN", "description": "ISP name to query. Omit to auto-detect from last measurement.", "disabled": true }
+                {
+                  "key": "isp_name",
+                  "value": "MTN",
+                  "description": "ISP name to query. Omit to auto-detect from last measurement.",
+                  "disabled": true
+                }
               ]
             },
             "description": "Aggregates anonymous speed data from all users with the same ISP. Returns status (healthy/degraded/outage), outage_pct, avg_download, unique_devices, and a verdict string. If isp_name is omitted, uses your last recorded ISP."
@@ -1124,12 +1788,23 @@
           "name": "Speed Trend (multi-week)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/speed-trend?weeks=4",
-              "query": [{ "key": "weeks", "value": "4", "description": "Number of weeks to analyse (2–12)" }]
+              "query": [
+                {
+                  "key": "weeks",
+                  "value": "4",
+                  "description": "Number of weeks to analyse (2\u201312)"
+                }
+              ]
             },
-            "description": "Detects if speed is improving, stable, or declining over multiple weeks. Returns trend (improving/stable/declining/insufficient_data), trend_pct (% change first→last week), a verdict string, and per-week breakdown of avg download/upload/ping."
+            "description": "Detects if speed is improving, stable, or declining over multiple weeks. Returns trend (improving/stable/declining/insufficient_data), trend_pct (% change first\u2192last week), a verdict string, and per-week breakdown of avg download/upload/ping."
           }
         }
       ]
@@ -1141,14 +1816,18 @@
           "name": "Bandwidth probe",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/bandwidth-probe" }
+            "url": {
+              "raw": "{{base_url}}/bandwidth-probe"
+            }
           }
         },
         {
           "name": "Multi-region latency",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/multi-region" }
+            "url": {
+              "raw": "{{base_url}}/multi-region"
+            }
           }
         },
         {
@@ -1157,7 +1836,12 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/traceroute?host=google.com",
-              "query": [{ "key": "host", "value": "google.com" }]
+              "query": [
+                {
+                  "key": "host",
+                  "value": "google.com"
+                }
+              ]
             }
           }
         },
@@ -1165,54 +1849,548 @@
           "name": "Create snapshot",
           "request": {
             "method": "POST",
-            "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }],
-            "url": { "raw": "{{base_url}}/snapshots" }
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/snapshots"
+            }
           }
         },
         {
           "name": "Get snapshot",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/snapshots/SNAPSHOT_ID_HERE" }
+            "url": {
+              "raw": "{{base_url}}/snapshots/SNAPSHOT_ID_HERE"
+            }
           }
         },
         {
           "name": "WebSocket live feed (ws://)",
           "request": {
             "method": "GET",
-            "url": { "raw": "wss://backend-cold-butterfly-9535.fly.dev/api/ws/live" },
+            "url": {
+              "raw": "wss://backend-cold-butterfly-9535.fly.dev/api/ws/live"
+            },
             "description": "Real-time speed measurements over WebSocket. Use Postman's WebSocket client or wscat."
           }
         }
       ]
     },
     {
-      "name": "v3.3 — New Features",
+      "name": "v3.3 \u2014 New Features",
       "description": "ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score",
       "item": [
-        { "name": "Get ISP contract", "request": { "method": "GET", "url": { "raw": "{{base_url}}/contract" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Save ISP contract", "request": { "method": "POST", "url": { "raw": "{{base_url}}/contract" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"isp_name\": \"Acme Fiber\",\n  \"plan_name\": \"100 Mbps Fiber\",\n  \"promised_download\": 100,\n  \"promised_upload\": 20,\n  \"monthly_cost\": 49.99,\n  \"currency\": \"USD\",\n  \"sla_threshold_pct\": 80\n}" } } },
-        { "name": "Contract compliance report", "request": { "method": "GET", "url": { "raw": "{{base_url}}/contract/compliance?days=30" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Network quality certificate", "request": { "method": "GET", "url": { "raw": "{{base_url}}/certificate?days=30" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Best time recommender", "request": { "method": "GET", "url": { "raw": "{{base_url}}/best-time" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Nearby devices (WiFi)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/nearby" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }], "description": "Returns my_ip (shared public IP for all WiFi devices), nearby list, and already_linked status. Use my_ip to derive the deterministic WiFi group code client-side." } },
-        { "name": "My device groups", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/my-groups" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Link device to group", "request": { "method": "POST", "url": { "raw": "{{base_url}}/devices/link" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"group_id\": null,\n  \"label\": \"My Laptop\"\n}" }, "description": "Leave group_id null to create a new group. Pass a group_id to join an existing group." } },
-        { "name": "Unlink device from group", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/devices/link/GROUP_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Compare devices", "request": { "method": "GET", "url": { "raw": "{{base_url}}/devices/compare" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "DNS test", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dns-test?domain=google.com" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Generate complaint letter", "request": { "method": "GET", "url": { "raw": "{{base_url}}/complaint-letter?your_name=John+Doe&your_address=123+Main+St&isp_name=Acme+Fiber&account_number=ACC12345&issue_start=2026-01-01" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "List schedules", "request": { "method": "GET", "url": { "raw": "{{base_url}}/schedules" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Create schedule", "request": { "method": "POST", "url": { "raw": "{{base_url}}/schedules" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [8, 12, 18],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 2,\n  \"enabled\": true\n}" } } },
-        { "name": "Update schedule", "request": { "method": "PUT", "url": { "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [9, 13, 19],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 1,\n  \"enabled\": false\n}" } } },
-        { "name": "Delete schedule", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Run packet loss test", "request": { "method": "POST", "url": { "raw": "{{base_url}}/packet-loss/run?target=1.1.1.1&count=20" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Packet loss history", "request": { "method": "GET", "url": { "raw": "{{base_url}}/packet-loss/history?limit=20" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "WFH score", "request": { "method": "GET", "url": { "raw": "{{base_url}}/wfh-score" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Neighborhood outages", "request": { "method": "GET", "url": { "raw": "{{base_url}}/neighborhood-outages" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Uptime calendar (90 days)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/uptime-calendar?days=90" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "ISP community status", "request": { "method": "GET", "url": { "raw": "{{base_url}}/isp-community-status" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } },
-        { "name": "Speed trend (4 weeks)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/speed-trend?weeks=4" }, "header": [{ "key": "X-Client-ID", "value": "{{client_id}}" }] } }
+        {
+          "name": "Get ISP contract",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/contract"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Save ISP contract",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/contract"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isp_name\": \"Acme Fiber\",\n  \"plan_name\": \"100 Mbps Fiber\",\n  \"promised_download\": 100,\n  \"promised_upload\": 20,\n  \"monthly_cost\": 49.99,\n  \"currency\": \"USD\",\n  \"sla_threshold_pct\": 80\n}"
+            }
+          }
+        },
+        {
+          "name": "Contract compliance report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/contract/compliance?days=30"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Network quality certificate",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/certificate?days=30"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Best time recommender",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/best-time"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Nearby devices (WiFi)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/devices/nearby"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "description": "Returns my_ip (shared public IP for all WiFi devices), nearby list, and already_linked status. Use my_ip to derive the deterministic WiFi group code client-side."
+          }
+        },
+        {
+          "name": "My device groups",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/devices/my-groups"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Link device to group",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/devices/link"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"group_id\": null,\n  \"label\": \"My Laptop\"\n}"
+            },
+            "description": "Leave group_id null to create a new group. Pass a group_id to join an existing group."
+          }
+        },
+        {
+          "name": "Unlink device from group",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/devices/link/GROUP_ID_HERE"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Compare devices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/devices/compare"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "DNS test",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/dns-test?domain=google.com"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Generate complaint letter",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/complaint-letter?your_name=John+Doe&your_address=123+Main+St&isp_name=Acme+Fiber&account_number=ACC12345&issue_start=2026-01-01"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "List schedules",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/schedules"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Create schedule",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/schedules"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [8, 12, 18],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 2,\n  \"enabled\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Update schedule",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Morning Tests\",\n  \"hours\": [9, 13, 19],\n  \"days\": [0,1,2,3,4],\n  \"burst_count\": 1,\n  \"enabled\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete schedule",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/schedules/SCHEDULE_ID_HERE"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Run packet loss test",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/packet-loss/run?target=1.1.1.1&count=20"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Packet loss history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/packet-loss/history?limit=20"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "WFH score",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/wfh-score"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Neighborhood outages",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/neighborhood-outages"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Uptime calendar (90 days)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/uptime-calendar?days=90"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ISP community status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/isp-community-status"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Speed trend (4 weeks)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/speed-trend?weeks=4"
+            },
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "v3.4 \u2014 Internet Crisis Monitor",
+      "description": "Live internet crisis detection combining local speed analysis with real-time status from 7 infrastructure providers (Cloudflare, GitHub, Discord, Reddit, Atlassian, Stripe, Twilio) and IODA BGP routing health.",
+      "item": [
+        {
+          "name": "GET Combined Crisis Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}",
+                "description": "Your device UUID from localStorage"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internet-crisis",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internet-crisis"
+              ]
+            },
+            "description": "Combined local + global severity. Returns combined_severity (outage/critical/major/minor/none/unknown), a contextual alert_message built from real data, local connection analysis, and global provider status. Also persists the event to crisis_logs DB (deduped per 30 min)."
+          }
+        },
+        {
+          "name": "GET Global Infrastructure Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/internet-crisis/global",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internet-crisis",
+                "global"
+              ]
+            },
+            "description": "Live status from 7 Atlassian Statuspage providers (Cloudflare, GitHub, Discord, Reddit, Atlassian, Stripe, Twilio) + IODA BGP routing health. Cached 5 minutes. Returns per-provider indicator, active incidents, degraded components, and overall severity."
+          }
+        },
+        {
+          "name": "GET Local Connection Analysis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}",
+                "description": "Required \u2014 device UUID"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internet-crisis/local",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internet-crisis",
+                "local"
+              ]
+            },
+            "description": "Compares last 5 speed tests against 7-day baseline for this device. Returns status (outage/critical/major/minor/none), current_download_mbps, current_upload_mbps, avg_ping_ms, jitter_ms, pct_of_baseline, ISP, community_reports_24h, and baseline_samples."
+          }
+        },
+        {
+          "name": "GET Crisis Event History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}",
+                "description": "Optional \u2014 scopes to your device"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/internet-crisis/history?days=7",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internet-crisis",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7",
+                  "description": "Number of days to look back (1\u201330)"
+                }
+              ]
+            },
+            "description": "Returns persisted crisis events from the crisis_logs table. Each event includes combined_severity, local_severity, global_severity, local_download_mbps, pct_of_baseline, affected_services, total_incidents, and timestamp."
+          }
+        },
+        {
+          "name": "GET Community Impact",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/internet-crisis/community-impact?hours=24",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "internet-crisis",
+                "community-impact"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24",
+                  "description": "Lookback window in hours (1\u2013168)"
+                }
+              ]
+            },
+            "description": "Aggregates community_reports and outage_events tables. Returns community_reports count, outage_events count, unresolved_outages, top_affected_isps (by report count), and issue_breakdown by type."
+          }
+        }
       ]
     }
   ]

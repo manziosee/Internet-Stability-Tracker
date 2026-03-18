@@ -44,6 +44,7 @@ import GavelIcon from '@mui/icons-material/Gavel';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
+import CrisisAlertIcon from '@mui/icons-material/CrisisAlert';
 import { useColorMode } from './ColorModeContext';
 import Dashboard from './components/Dashboard';
 import OutageMap from './components/OutageMap';
@@ -84,11 +85,13 @@ import ComplaintLetterPage from './components/ComplaintLetterPage';
 import ScheduledTestsPage from './components/ScheduledTestsPage';
 import PacketLossPage from './components/PacketLossPage';
 import WFHScorePage from './components/WFHScorePage';
+import InternetCrisisPage from './components/InternetCrisisPage';
 
 // Core nav items shown in top bar (keep ≤8 for readability)
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '/',             icon: <DashboardIcon fontSize="small" />,          group: 'core' },
-  { label: 'Status',       path: '/status',       icon: <PublicIcon fontSize="small" />,             group: 'core' },
+  { label: 'Crisis Monitor', path: '/crisis',       icon: <CrisisAlertIcon fontSize="small" />,        group: 'core' },
+  { label: 'Status',        path: '/status',       icon: <PublicIcon fontSize="small" />,             group: 'core' },
   { label: 'Outage Map',   path: '/map',          icon: <MapIcon fontSize="small" />,                group: 'core' },
   { label: 'AI Insights',  path: '/ai-enhanced',  icon: <PsychologyIcon fontSize="small" />,         group: 'core' },
   { label: 'Health',       path: '/health-score', icon: <HealthAndSafetyIcon fontSize="small" />,    group: 'tools' },
@@ -100,8 +103,9 @@ const NAV_ITEMS = [
 // Full drawer list including hidden routes
 const DRAWER_ITEMS = [
   { section: 'Core', items: [
-    { label: 'Dashboard',    path: '/',       icon: <DashboardIcon /> },
-    { label: 'Status',       path: '/status', icon: <PublicIcon /> },
+    { label: 'Dashboard',        path: '/',       icon: <DashboardIcon /> },
+    { label: 'Crisis Monitor',   path: '/crisis', icon: <CrisisAlertIcon /> },
+    { label: 'Status',           path: '/status', icon: <PublicIcon /> },
     { label: 'Outage Map',   path: '/map',    icon: <MapIcon /> },
     { label: 'Report Issue', path: '/report', icon: <ReportProblemIcon /> },
     { label: 'ISP Reliability', path: '/isp', icon: <StarIcon /> },
@@ -401,6 +405,7 @@ function App() {
             <Route path="/schedules"          element={<ScheduledTestsPage />} />
             <Route path="/packet-loss"        element={<PacketLossPage />} />
             <Route path="/wfh-score"          element={<WFHScorePage />} />
+            <Route path="/crisis"             element={<InternetCrisisPage />} />
           </Routes>
         </Box>
       </Box>

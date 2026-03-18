@@ -24,7 +24,8 @@ RUN npm run build \
 FROM nginx:1.27-alpine
 
 LABEL org.opencontainers.image.title="IST Frontend" \
-      org.opencontainers.image.description="Internet Stability Tracker React UI"
+      org.opencontainers.image.description="Internet Stability Tracker React UI" \
+      org.opencontainers.image.version="3.4.0"
 
 # Remove default nginx content
 RUN rm -rf /usr/share/nginx/html/*
