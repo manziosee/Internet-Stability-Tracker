@@ -4,7 +4,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="IST Backend" \
       org.opencontainers.image.description="Internet Stability Tracker API" \
-      org.opencontainers.image.version="3.3.0"
+      org.opencontainers.image.version="3.4.0"
 
 # Upgrade system packages (patch CVEs in base image) + install network diagnostic tools
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \

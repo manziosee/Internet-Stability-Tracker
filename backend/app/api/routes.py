@@ -4896,3 +4896,116 @@ def get_wfh_score(
         "period_days":     days,
         "tests":           len(rows),
     }
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internet Crisis Monitor
+# ─────────────────────────────────────────────────────────────────────────────
+
+from app.services.crisis_service import (
+    fetch_global_status,
+    analyze_local_crisis as _analyze_local,
+    log_crisis_event,
+    get_crisis_history,
+    get_community_impact,
+)
+
+
+@router.get("/internet-crisis", tags=["crisis"], summary="Combined local + global internet crisis status")
+async def get_internet_crisis(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    local         = _analyze_local(db, client_id) if client_id else {
+        "status": "unknown", "message": "No client ID — run a speed test first.",
+        "current_download_mbps": None, "baseline_download_mbps": None, "pct_of_baseline": None,
+    }
+    global_status = await fetch_global_status()
+
+    sev_order = {"outage": 6, "critical": 5, "major": 4, "minor": 3, "none": 1, "unknown": 0}
+    local_sev  = local.get("status", "unknown")
+    global_sev = global_status.get("severity", "unknown")
+    combined   = max(local_sev, global_sev, key=lambda x: sev_order.get(x, 0))
+
+    # Contextual alert message using real data
+    affected_names = [s["name"] for s in global_status.get("services", [])
+                      if s.get("indicator") not in ("none", "unknown", None)]
+    local_dl = local.get("current_download_mbps")
+    pct      = local.get("pct_of_baseline")
+
+    if combined in ("outage", "critical"):
+        parts = []
+        if local_sev in ("outage", "critical") and local_dl is not None:
+            parts.append(f"your connection is at {local_dl} Mbps ({pct}% of baseline)")
+        if affected_names:
+            parts.append(f"{', '.join(affected_names[:3])} {'are' if len(affected_names) > 1 else 'is'} reporting incidents")
+        alert = "⚠️ Serious internet crisis — " + ("; ".join(parts) if parts else "both local and global issues detected") + "."
+    elif combined == "major":
+        parts = []
+        if local_dl is not None and pct is not None and pct < 80:
+            parts.append(f"your speed is at {pct}% of normal")
+        if affected_names:
+            parts.append(f"{len(affected_names)} provider(s) affected")
+        alert = "🔶 Major disruption — " + (", ".join(parts) if parts else "significant issues detected") + "."
+    elif combined == "minor":
+        parts = []
+        if affected_names:
+            parts.append(f"{affected_names[0]} reporting minor issues")
+        if local_dl is not None and pct is not None and pct < 90:
+            parts.append(f"your speed is {pct}% of baseline")
+        alert = "🟡 Minor disruptions — " + (", ".join(parts) if parts else "slight degradation detected") + "."
+    elif combined == "none":
+        dl_str = f" ({local_dl} Mbps)" if local_dl else ""
+        alert = f"✅ All systems normal{dl_str}. No crisis signals detected."
+    else:
+        alert = "ℹ️ Run a speed test to get your local status. Global infrastructure is being monitored."
+
+    # Persist event to history (non-blocking — ignore errors)
+    try:
+        log_crisis_event(db, combined, local, global_status, client_id)
+    except Exception:
+        pass
+
+    return {
+        "combined_severity": combined,
+        "alert_message":     alert,
+        "local":             local,
+        "global":            global_status,
+        "generated_at":      datetime.utcnow().isoformat() + "Z",
+    }
+
+
+@router.get("/internet-crisis/global", tags=["crisis"], summary="Live global infrastructure status (cached 5 min)")
+async def get_global_crisis():
+    return await fetch_global_status()
+
+
+@router.get("/internet-crisis/local", tags=["crisis"], summary="Local connection crisis analysis")
+def get_local_crisis(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    return _analyze_local(db, client_id)
+
+
+@router.get("/internet-crisis/history", tags=["crisis"], summary="Crisis event history (last N days)")
+def get_crisis_history_route(
+    days: int = Query(default=7, ge=1, le=30),
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Depends(get_client_id),
+):
+    return {
+        "days": days,
+        "events": get_crisis_history(db, client_id, days),
+    }
+
+
+@router.get("/internet-crisis/community-impact", tags=["crisis"], summary="Community outage reports and ISP impact")
+def get_crisis_community_impact(
+    hours: int = Query(default=24, ge=1, le=168),
+    db: Session = Depends(get_db),
+):
+    return get_community_impact(db, hours)

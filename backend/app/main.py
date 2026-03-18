@@ -36,7 +36,7 @@ from .models.measurement import (  # noqa: F401 - ensures tables are created
     SpeedMeasurement, CommunityReport, OutageEvent,
     AlertConfig, AlertLog, UserPreferences, SecurityScan, Webhook,
     APIKey, UserLocation, SpeedChallenge,
-    ISPContract, TestSchedule, PacketLossReading, DeviceGroup,
+    ISPContract, TestSchedule, PacketLossReading, DeviceGroup, CrisisLog,
 )
 
 logging.basicConfig(

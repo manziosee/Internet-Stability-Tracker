@@ -11,7 +11,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Fly.io](https://img.shields.io/badge/Fly.io-deployed-8B5CF6?logo=fly.io&logoColor=white)](https://fly.io)
 [![Vercel](https://img.shields.io/badge/Vercel-deployed-000000?logo=vercel&logoColor=white)](https://vercel.com)
-![Version](https://img.shields.io/badge/API_version-3.3.0-brightgreen)
+![Version](https://img.shields.io/badge/API_version-3.4.0-brightgreen)
 
 </div>
 
@@ -23,8 +23,8 @@
 |---------|-----|
 | 🖥️ Frontend | https://internet-stability-tracker.vercel.app |
 | ⚡ API | https://backend-cold-butterfly-9535.fly.dev/api |
-| 📖 Swagger UI | https://backend-cold-butterfly-9535.fly.dev/docs |
-| 📚 ReDoc | https://backend-cold-butterfly-9535.fly.dev/redoc |
+| 📖 Swagger UI | http://localhost:8000/docs *(local dev only — disabled in production)* |
+| 📚 ReDoc | http://localhost:8000/redoc *(local dev only — disabled in production)* |
 | 🔌 WebSocket | `wss://backend-cold-butterfly-9535.fly.dev/api/ws/live` |
 
 ---
@@ -72,6 +72,15 @@
 │  │              │  │ 20+ NL paths │  │  LinearReg)  │  │ (port scan,│  │
 │  │ speedtest-cli│  │              │  │              │  │  DNS leak) │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ Crisis Service                                                   │   │
+│  │  • 7 Atlassian Statuspage providers (Cloudflare, GitHub,        │   │
+│  │    Discord, Reddit, Atlassian, Stripe, Twilio)                  │   │
+│  │  • IODA BGP routing health (Georgia Tech public API)            │   │
+│  │  • Local speed vs 7-day baseline analysis                       │   │
+│  │  • CrisisLog DB persistence with 30-min deduplication           │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
 │         │                 │                  │                 │         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
 │  │ Advanced     │  │ SLA Tracker  │  │ Health Score │  │ Weekly     │  │
@@ -103,10 +112,11 @@
 │  │   • alert_logs                │   │   • Telegram Bot API           │  │
 │  │   • user_preferences          │   │   • Discord Webhooks           │  │
 │  │   • security_scans            │   │   • Twilio SMS                 │  │
-│  │   • webhooks                  │   └────────────────────────────────┘  │
-│  │   • api_keys                  │                                       │
-│  │   • speed_challenges          │                                       │
-│  │   • user_locations            │                                       │
+│  │   • webhooks                  │   │   • Atlassian Statuspage APIs  │  │
+│  │   • api_keys                  │   │     (7 providers, no auth)     │  │
+│  │   • speed_challenges          │   │   • IODA BGP API (Georgia Tech)│  │
+│  │   • user_locations            │   └────────────────────────────────┘  │
+│  │   • crisis_logs               │                                       │
 │  └──────────────────────────────┘                                       │
 └──────────────────────────────────────────────────────────────────────────┘
               │
@@ -276,6 +286,7 @@ Chrome Alarm fires every N minutes (configured in options)
 | ISP Reliability | `/isp` | Per-ISP letter grades and weighted leaderboard |
 | Cool Features | `/cool` | Gaming mode, video calls, router health, activity recommendations |
 | Diagnostics | `/diagnostics-advanced` | OS, public IP, location, + packet loss, jitter, bufferbloat, MTU, DNS leak, VPN speed |
+| **Crisis Monitor** | `/crisis` | **Live local + global internet crisis detection — 7 providers, IODA BGP, history, community impact** |
 
 ### Analytics & AI
 | Page | Path | Description |
@@ -312,6 +323,11 @@ Chrome Alarm fires every N minutes (configured in options)
 | Scheduled Tests | `/scheduled-tests` | Configure recurring tests by hour/day with burst support |
 | Packet Loss | `/packet-loss` | TCP-based packet loss & jitter monitor with history sparkline |
 | WFH Score | `/wfh-score` | Work-from-home suitability across 8 apps (Zoom, Slack, Teams…) |
+
+### New in v3.4
+| Page | Path | Description |
+|------|------|-------------|
+| Crisis Monitor | `/crisis` | Live local + global crisis detection with 4-tab UI: real-time status, history timeline, community ISP impact, and educational content about internet infrastructure |
 
 ---
 
@@ -390,6 +406,15 @@ Chrome Alarm fires every N minutes (configured in options)
 | `GET` | `/api/isp-community-status` | Aggregated ISP health across all users |
 | `GET` | `/api/speed-trend` | Multi-week speed trend (improving/stable/declining) |
 
+### Internet Crisis Monitor (v3.4)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/internet-crisis` | Combined local + global severity, contextual alert message, logs event |
+| `GET` | `/api/internet-crisis/global` | Live status from 7 providers + IODA BGP (cached 5 min) |
+| `GET` | `/api/internet-crisis/local` | Local speed vs 7-day baseline — download, upload, ping, jitter, ISP |
+| `GET` | `/api/internet-crisis/history?days=7` | Crisis event history from DB (up to 30 days) |
+| `GET` | `/api/internet-crisis/community-impact?hours=24` | Aggregated ISP breakdown, issue types, unresolved outages |
+
 ### Advanced Diagnostics
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -429,6 +454,7 @@ isp_contracts           — per-device ISP plan details for SLA compliance track
 test_schedules          — recurring speed test schedules (hours × days × burst)
 packet_loss_readings    — TCP packet loss + jitter history per device
 device_groups           — multi-device group memberships for cross-device comparison
+crisis_logs             — detected crisis events: local+global severity, affected providers, 30-min dedup
 ```
 
 ---
@@ -437,8 +463,8 @@ device_groups           — multi-device group memberships for cross-device comp
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| React 18 + CRA | Frontend SPA | 20+ pages, MUI v6, Recharts, Leaflet |
-| FastAPI 0.104 | REST API + WebSocket | 70+ endpoints, Pydantic v2, SQLAlchemy 2 |
+| React 18 + CRA | Frontend SPA | 30+ pages, MUI v6, Recharts, Leaflet |
+| FastAPI 0.104 | REST API + WebSocket | 80+ endpoints, Pydantic v2, SQLAlchemy 2 |
 | Turso (libSQL) | Cloud database | Edge SQLite, per-device data isolation |
 | scikit-learn | ML predictions | LinearRegression speed forecasting |
 | APScheduler | Background jobs | Hourly aggregation, weekly report, alert eval |
@@ -529,7 +555,10 @@ The extension uses the same `ist_client_id` UUID as the web app — your test hi
 
 ### Backend — Fly.io
 
+> **Important:** Always run `fly deploy` from the `backend/` directory. Running it from the project root will pick up `frontend/Dockerfile` (nginx) instead of `backend/Dockerfile` (Python/uvicorn).
+
 ```bash
+cd backend
 fly launch --no-deploy
 fly secrets set \
   TURSO_DB_URL=libsql://your-db.turso.io \
@@ -542,7 +571,7 @@ fly secrets set TELEGRAM_BOT_TOKEN=...
 fly secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=...
 fly secrets set SENTRY_DSN=https://...@sentry.io/...
 
-fly deploy
+fly deploy --app backend-cold-butterfly-9535
 ```
 
 ### Frontend — Vercel
@@ -597,7 +626,7 @@ fly tokens create deploy -x 999999h
 | Control | Implementation |
 |---------|---------------|
 | Rate limiting | Sliding-window per-IP **and** per-X-Client-ID |
-| Admin endpoints | `DELETE /api/measurements` requires `X-Admin-Key` header |
+| Admin endpoints | `DELETE /api/measurements` requires `X-Admin-Key` header (HMAC timing-safe compare) |
 | Device isolation | All personal queries scoped via `_scope()` helper using `X-Client-ID` |
 | Input validation | Pydantic v2 schemas; SQLAlchemy ORM (no raw queries) |
 | CORS | Locked to frontend origin in production |
@@ -615,10 +644,10 @@ fly tokens create deploy -x 999999h
 Internet-Stability-Tracker/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes.py                   # 70+ endpoints + WebSocket
+│   │   ├── api/routes.py                   # 80+ endpoints + WebSocket
 │   │   ├── core/config.py                  # Pydantic-settings config
 │   │   ├── core/database.py                # Turso/libSQL connection
-│   │   ├── models/measurement.py           # SQLAlchemy models (11 tables)
+│   │   ├── models/measurement.py           # SQLAlchemy models (16 tables incl. crisis_logs)
 │   │   ├── services/
 │   │   │   ├── speed_test.py               # speedtest-cli wrapper
 │   │   │   ├── ai_insights_enhanced.py     # NL chatbot (20+ paths)
@@ -630,7 +659,8 @@ Internet-Stability-Tracker/
 │   │   │   ├── health_score.py             # composite 0–100 score
 │   │   │   ├── weekly_report.py            # NL weekly summary
 │   │   │   ├── throttle_detector.py        # 4-CDN throttle probe
-│   │   │   └── cache_service.py            # Redis + in-memory fallback
+│   │   │   ├── cache_service.py            # Redis + in-memory fallback
+│   │   │   └── crisis_service.py           # crisis detection: 7 providers, IODA, history, community impact
 │   │   ├── scheduler.py                    # APScheduler background jobs
 │   │   └── main.py                         # FastAPI app, middleware, lifespan
 │   ├── Dockerfile
@@ -664,8 +694,9 @@ Internet-Stability-Tracker/
 │   │   │   ├── WFHScorePage.js             # Work-from-home score (v3.3)
 │   │   │   ├── UptimeCalendarPage.js       # 90-day uptime heatmap (v3.3)
 │   │   │   ├── ISPCommunityPage.js         # ISP community health (v3.3)
-│   │   │   └── SpeedTrendPage.js           # Multi-week speed trend (v3.3)
-│   │   ├── services/api.js                 # Axios client + cold-start retry (100+ endpoints)
+│   │   │   ├── SpeedTrendPage.js           # Multi-week speed trend (v3.3)
+│   │   │   └── InternetCrisisPage.js       # Crisis Monitor — live status, history, community, education (v3.4)
+│   │   ├── services/api.js                 # Axios client + cold-start retry (110+ endpoints)
 │   │   └── App.js                          # Router + navigation (30+ pages)
 │   └── package.json
 ├── browser-extension/
@@ -687,18 +718,15 @@ Internet-Stability-Tracker/
 
 ## Postman Collection
 
-Import `postman_collection.json` — 100+ pre-configured requests across 22 folders.
+Import `postman_collection.json` — 110+ pre-configured requests across 23 folders.
 
 The `base_url` variable defaults to the live production API. Change it to `http://localhost:8000/api` for local development. Set `client_id` to your browser's `ist_client_id` from localStorage to test device-scoped endpoints.
 
-**Folders:** Health · Speed Test · Measurements · Statistics · Outages · ISP · Community Reports · Diagnostics · Security · Historical · AI Insights · ML Predictions · Smart Alerts · Webhooks · Monitoring · v3.2 Features (SLA, Throttle, Health Score, Cost, Leaderboard, Export, API Keys) · v3.3 Features (ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score)
+**Folders:** Health · Speed Test · Measurements · Statistics · Outages · ISP · Community Reports · Diagnostics · Security · Historical · AI Insights · ML Predictions · Smart Alerts · Webhooks · Monitoring · v3.2 Features (SLA, Throttle, Health Score, Cost, Leaderboard, Export, API Keys) · v3.3 Features (ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score) · **v3.4 — Internet Crisis Monitor** (combined status, global, local, history, community impact)
 
 ---
 
 ## 📚 Documentation
-
-- **[CI/CD Guide](CI-CD-GUIDE.md)** — Complete deployment documentation
-- **[Quick Reference](QUICK-REFERENCE.md)** — One-line commands cheat sheet
 - **[Browser Extension](browser-extension/README.md)** — Extension installation guide
 
 ---

@@ -206,3 +206,20 @@ class DeviceGroup(Base):
     label      = Column(String, default="My Device")
     joined_at  = Column(DateTime, default=datetime.utcnow)
     is_primary = Column(Boolean, default=False)
+
+
+class CrisisLog(Base):
+    """Stores detected crisis events for history and trending."""
+    __tablename__ = "crisis_logs"
+    id               = Column(Integer, primary_key=True, index=True)
+    timestamp        = Column(DateTime, default=datetime.utcnow, index=True)
+    combined_severity = Column(String, nullable=False, index=True)  # none/minor/major/critical/outage
+    local_severity   = Column(String, nullable=True)
+    global_severity  = Column(String, nullable=True)
+    local_download_mbps = Column(Float, nullable=True)
+    pct_of_baseline  = Column(Integer, nullable=True)
+    affected_services = Column(JSON, nullable=True)   # list of provider names with issues
+    total_incidents  = Column(Integer, default=0)
+    community_reports_24h = Column(Integer, default=0)
+    client_id        = Column(String, nullable=True, index=True)
+    __table_args__ = (Index("ix_crisis_client_ts", "client_id", "timestamp"),)

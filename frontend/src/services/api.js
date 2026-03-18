@@ -426,3 +426,19 @@ export const getNeighborhoodOutages = (params = {}) =>
 // WFH Score
 export const getWFHScore = () =>
   api.get('/wfh-score');
+
+// Internet Crisis Monitor
+export const getInternetCrisis = () =>
+  api.get('/internet-crisis');
+
+export const getGlobalCrisis = () =>
+  api.get('/internet-crisis/global');
+
+export const getLocalCrisis = () =>
+  api.get('/internet-crisis/local');
+
+export const getCrisisHistory = (days = 7) =>
+  api.get('/internet-crisis/history', { params: { days } });
+
+export const getCrisisCommunityImpact = (hours = 24) =>
+  api.get('/internet-crisis/community-impact', { params: { hours } });
