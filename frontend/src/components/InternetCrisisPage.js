@@ -482,6 +482,14 @@ export default function InternetCrisisPage() {
 
   const severity = data?.combined_severity || 'unknown';
 
+  // Update browser tab title based on crisis severity
+  useEffect(() => {
+    const label = sev(severity).label;
+    const prefix = severity === 'none' ? '' : `[${label}] `;
+    document.title = `${prefix}Internet Crisis Monitor`;
+    return () => { document.title = 'Internet Stability Tracker'; };
+  }, [severity]);
+
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: { xs: 2, md: 3 } }}>
       {/* Header */}
