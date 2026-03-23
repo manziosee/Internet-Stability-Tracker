@@ -292,7 +292,7 @@ detects outages, and visualises performance across ISPs.
 ### Postman collection
 Import `postman_collection.json` from the repo root — pre-configured to hit the live production URL.
 """,
-    version="3.3.0",
+    version="3.5.0",
     contact={
         "name": "Internet Stability Tracker",
         "url": "https://github.com/manziosee/Internet-Stability-Tracker",
@@ -377,10 +377,18 @@ app.include_router(router, prefix="/api")
 @app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 def health_check():
     return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status":      "healthy",
+        "version":     "3.5.0",
+        "timestamp":   datetime.now(timezone.utc).isoformat(),
         "environment": settings.ENVIRONMENT,
     }
+
+
+@app.get("/api/openapi.json", include_in_schema=False)
+def openapi_export():
+    """Always-available OpenAPI spec — even in production (Swagger UI is disabled in prod but the schema is still exportable)."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(app.openapi())
 
 
 # ─── SPA static serving (single-container mode) ───────────────────────────────

@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "Internet Stability Tracker API v3.4",
-    "description": "Complete API collection for Internet Stability Tracker v3.4 \u2014 advanced network monitoring with AI insights, security auditing, real-time diagnostics, and multi-device support.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n> **Note:** Swagger UI and ReDoc are **disabled in production**. Use this Postman collection, or run locally at http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3.4\n- Internet Crisis Monitor \u2014 combined local+global crisis detection, 7 status providers, IODA BGP, history, community impact\n\n## New in v3.3\n- ISP Contract Tracker \u2014 save plan details, track SLA compliance\n- Network Quality Certificate \u2014 printable A+\u2192F grade certificate\n- Best Time Recommender \u2014 24-hour speed profile with activity suggestions\n- Multi-Device Aggregator \u2014 link devices via WiFi network code (no Bluetooth), QR + 6-char code\n- DNS Monitor \u2014 per-resolver latency test\n- ISP Complaint Letter Generator \u2014 auto-generate formal letter from your data\n- Scheduled Speed Tests \u2014 recurring tests by hour/day with burst support\n- Packet Loss & Jitter Monitor \u2014 TCP-based measurement with history\n- WFH Score \u2014 work-from-home suitability across 8 apps\n- Uptime Calendar \u2014 90-day daily uptime heatmap\n- ISP Community Status \u2014 aggregate ISP health across all users\n- Speed Trend \u2014 multi-week improving/stable/declining trend",
-    "version": "3.4.0",
+    "name": "Internet Stability Tracker API v3.5",
+    "description": "Complete API collection for Internet Stability Tracker v3.4 — advanced network monitoring with AI insights, security auditing, real-time diagnostics, and multi-device support.\n\n## Live Production URL\nAll requests default to the **live deployment**:\n```\nhttps://backend-cold-butterfly-9535.fly.dev/api\n```\n\n## Switch to local dev\nChange the `base_url` collection variable to `http://localhost:8000/api`.\n\n## Swagger UI\n> **Note:** Swagger UI and ReDoc are **disabled in production**. Use this Postman collection, or run locally at http://localhost:8000/docs\n\n## WebSocket\n```\nwss://backend-cold-butterfly-9535.fly.dev/api/ws/live\n```\n\n## Authentication\nAll per-device endpoints require `X-Client-ID` header (UUID). The frontend auto-generates and persists this in localStorage.\n\n## Rate limits\n| Endpoint | Limit |\n|----------|-------|\n| `POST /test-now` | 5 req / 60 s per IP + X-Client-ID |\n| `POST /reports` | 5 req / 60 s per IP + X-Client-ID |\n| `DELETE /measurements` | 3 req / 60 s (admin key required) |\n| `GET /my-connection` | 10 req / 60 s per IP |\n| All others | 60 req / 60 s per IP |\n\n## New in v3.5\n- LLM AI chatbot — OpenAI GPT-4o-mini primary, Groq llama-3.1-8b fallback, real measurement context\n- Traceroute enriched — structured hop-by-hop ASN + org + latency spike detection\n- IPv6 check — dual-stack detection + IPv4 vs IPv6 latency comparison\n- Anomaly detection (Isolation Forest) — multi-dimensional ML anomaly detection\n- GET /api/openapi.json — OpenAPI spec always available even in production\n- Health endpoint returns version field\n\n## New in v3.4\n- Internet Crisis Monitor — combined local+global crisis detection, 7 status providers, IODA BGP, history, community impact\n\n## New in v3.3\n- ISP Contract Tracker — save plan details, track SLA compliance\n- Network Quality Certificate — printable A+→F grade certificate\n- Best Time Recommender — 24-hour speed profile with activity suggestions\n- Multi-Device Aggregator — link devices via WiFi network code (no Bluetooth), QR + 6-char code\n- DNS Monitor — per-resolver latency test\n- ISP Complaint Letter Generator — auto-generate formal letter from your data\n- Scheduled Speed Tests — recurring tests by hour/day with burst support\n- Packet Loss & Jitter Monitor — TCP-based measurement with history\n- WFH Score — work-from-home suitability across 8 apps\n- Uptime Calendar — 90-day daily uptime heatmap\n- ISP Community Status — aggregate ISP health across all users\n- Speed Trend — multi-week improving/stable/declining trend",
+    "version": "3.5.0",
     "_postman_id": "ist-api-v3",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,19 +17,19 @@
       "key": "client_id",
       "value": "00000000-0000-0000-0000-000000000001",
       "type": "string",
-      "description": "Device UUID \u2014 update to match your browser's stored X-Client-ID"
+      "description": "Device UUID — update to match your browser's stored X-Client-ID"
     },
     {
       "key": "report_id",
       "value": "1",
       "type": "string",
-      "description": "ID of a community report \u2014 update after creating one"
+      "description": "ID of a community report — update after creating one"
     },
     {
       "key": "webhook_id",
       "value": "1",
       "type": "string",
-      "description": "ID of a registered webhook \u2014 update after calling POST /webhooks"
+      "description": "ID of a registered webhook — update after calling POST /webhooks"
     }
   ],
   "item": [
@@ -627,7 +627,7 @@
       "name": "Historical Visualization",
       "item": [
         {
-          "name": "Heatmap (7\u00d724 grid)",
+          "name": "Heatmap (7×24 grid)",
           "request": {
             "method": "GET",
             "header": [
@@ -789,7 +789,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 why slow",
+          "name": "AI chatbot — why slow",
           "request": {
             "method": "GET",
             "header": [
@@ -811,7 +811,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 upload speed",
+          "name": "AI chatbot — upload speed",
           "request": {
             "method": "GET",
             "header": [
@@ -833,7 +833,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 download speed",
+          "name": "AI chatbot — download speed",
           "request": {
             "method": "GET",
             "header": [
@@ -854,7 +854,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 compare upload vs download",
+          "name": "AI chatbot — compare upload vs download",
           "request": {
             "method": "GET",
             "header": [
@@ -876,7 +876,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 best time to use internet",
+          "name": "AI chatbot — best time to use internet",
           "request": {
             "method": "GET",
             "header": [
@@ -897,7 +897,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 gaming suitability",
+          "name": "AI chatbot — gaming suitability",
           "request": {
             "method": "GET",
             "header": [
@@ -919,7 +919,7 @@
           }
         },
         {
-          "name": "AI chatbot \u2014 greeting",
+          "name": "AI chatbot — greeting",
           "request": {
             "method": "GET",
             "header": [
@@ -937,7 +937,7 @@
                 }
               ]
             },
-            "description": "Greeting response \u2014 returns friendly welcome + live stats snapshot."
+            "description": "Greeting response — returns friendly welcome + live stats snapshot."
           }
         },
         {
@@ -1040,7 +1040,7 @@
             "url": {
               "raw": "{{base_url}}/predictions/congestion-24h"
             },
-            "description": "Hourly congestion scores (0-100) for next 24 hours. Includes notable_periods with human-readable descriptions like 'Evening congestion (7 PM-11 PM) \u2014 35% slower'."
+            "description": "Hourly congestion scores (0-100) for next 24 hours. Includes notable_periods with human-readable descriptions like 'Evening congestion (7 PM-11 PM) — 35% slower'."
           }
         },
         {
@@ -1365,7 +1365,7 @@
                 }
               ]
             },
-            "description": "Returns 0\u2013100 score with letter grade (A+/A/B/C/D/F). Weighted: download 25%, upload 20%, ping 25%, stability 15%, uptime 15%. Includes breakdown per metric and actionable tips."
+            "description": "Returns 0–100 score with letter grade (A+/A/B/C/D/F). Weighted: download 25%, upload 20%, ping 25%, stability 15%, uptime 15%. Includes breakdown per metric and actionable tips."
           }
         }
       ]
@@ -1632,7 +1632,7 @@
             "url": {
               "raw": "{{base_url}}/api-keys"
             },
-            "description": "Generates a new API key (UUID v4). The raw key is returned ONCE in the response \u2014 store it securely. Only the SHA-256 hash is stored in the database. Max 5 keys per device."
+            "description": "Generates a new API key (UUID v4). The raw key is returned ONCE in the response — store it securely. Only the SHA-256 hash is stored in the database. Max 5 keys per device."
           }
         },
         {
@@ -1753,11 +1753,11 @@
                 {
                   "key": "days",
                   "value": "90",
-                  "description": "Number of days (7\u2013365)"
+                  "description": "Number of days (7–365)"
                 }
               ]
             },
-            "description": "Returns a day-by-day uptime % grid for GitHub-style heatmap visualization. Each day has: date, uptime_pct, total tests, outage count, level (0\u20133). Also returns summary: avg_uptime_pct, perfect_days, outage_days, tracked_days."
+            "description": "Returns a day-by-day uptime % grid for GitHub-style heatmap visualization. Each day has: date, uptime_pct, total tests, outage count, level (0–3). Also returns summary: avg_uptime_pct, perfect_days, outage_days, tracked_days."
           }
         },
         {
@@ -1800,11 +1800,11 @@
                 {
                   "key": "weeks",
                   "value": "4",
-                  "description": "Number of weeks to analyse (2\u201312)"
+                  "description": "Number of weeks to analyse (2–12)"
                 }
               ]
             },
-            "description": "Detects if speed is improving, stable, or declining over multiple weeks. Returns trend (improving/stable/declining/insufficient_data), trend_pct (% change first\u2192last week), a verdict string, and per-week breakdown of avg download/upload/ping."
+            "description": "Detects if speed is improving, stable, or declining over multiple weeks. Returns trend (improving/stable/declining/insufficient_data), trend_pct (% change first→last week), a verdict string, and per-week breakdown of avg download/upload/ping."
           }
         }
       ]
@@ -1882,7 +1882,7 @@
       ]
     },
     {
-      "name": "v3.3 \u2014 New Features",
+      "name": "v3.3 — New Features",
       "description": "ISP Contract, Certificate, Best Time, Multi-Device, DNS Monitor, Complaint Letter, Schedules, Packet Loss, WFH Score",
       "item": [
         {
@@ -2267,7 +2267,7 @@
       ]
     },
     {
-      "name": "v3.4 \u2014 Internet Crisis Monitor",
+      "name": "v3.4 — Internet Crisis Monitor",
       "description": "Live internet crisis detection combining local speed analysis with real-time status from 7 infrastructure providers (Cloudflare, GitHub, Discord, Reddit, Atlassian, Stripe, Twilio) and IODA BGP routing health.",
       "item": [
         {
@@ -2319,7 +2319,7 @@
               {
                 "key": "X-Client-ID",
                 "value": "{{client_id}}",
-                "description": "Required \u2014 device UUID"
+                "description": "Required — device UUID"
               }
             ],
             "url": {
@@ -2343,7 +2343,7 @@
               {
                 "key": "X-Client-ID",
                 "value": "{{client_id}}",
-                "description": "Optional \u2014 scopes to your device"
+                "description": "Optional — scopes to your device"
               }
             ],
             "url": {
@@ -2359,7 +2359,7 @@
                 {
                   "key": "days",
                   "value": "7",
-                  "description": "Number of days to look back (1\u201330)"
+                  "description": "Number of days to look back (1–30)"
                 }
               ]
             },
@@ -2384,11 +2384,100 @@
                 {
                   "key": "hours",
                   "value": "24",
-                  "description": "Lookback window in hours (1\u2013168)"
+                  "description": "Lookback window in hours (1–168)"
                 }
               ]
             },
             "description": "Aggregates community_reports and outage_events tables. Returns community_reports count, outage_events count, unresolved_outages, top_affected_isps (by report count), and issue_breakdown by type."
+          }
+        }
+      ]
+    },
+    {
+      "name": "v3.5 — LLM AI + Path Analysis + IPv6",
+      "item": [
+        {
+          "name": "AI query (LLM-powered)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/insights/query?q=why+is+my+internet+slow",
+              "query": [
+                {
+                  "key": "q",
+                  "value": "why is my internet slow"
+                }
+              ]
+            },
+            "description": "Ask natural language question — OpenAI GPT-4o-mini → Groq → keyword fallback."
+          }
+        },
+        {
+          "name": "Traceroute enriched (ASN + org)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/traceroute/enriched?host=8.8.8.8",
+              "query": [
+                {
+                  "key": "host",
+                  "value": "8.8.8.8"
+                }
+              ]
+            },
+            "description": "Hop-by-hop traceroute with ASN, org, country, and latency spike detection."
+          }
+        },
+        {
+          "name": "IPv6 check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/ipv6-check"
+            },
+            "description": "Dual-stack detection: IPv4 reachability, IPv6 reachability, latency comparison, misconfiguration verdict."
+          }
+        },
+        {
+          "name": "Anomaly detection (Isolation Forest)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-ID",
+                "value": "{{client_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/anomalies?hours=168&sensitivity=0.05",
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "168"
+                },
+                {
+                  "key": "sensitivity",
+                  "value": "0.05"
+                }
+              ]
+            },
+            "description": "Multi-dimensional anomaly detection using Isolation Forest (download + upload + ping)."
+          }
+        },
+        {
+          "name": "OpenAPI spec export",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/openapi.json"
+            },
+            "description": "Always-available OpenAPI JSON spec for SDK generation (works in production too)."
           }
         }
       ]

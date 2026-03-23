@@ -11,7 +11,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Fly.io](https://img.shields.io/badge/Fly.io-deployed-8B5CF6?logo=fly.io&logoColor=white)](https://fly.io)
 [![Vercel](https://img.shields.io/badge/Vercel-deployed-000000?logo=vercel&logoColor=white)](https://vercel.com)
-![Version](https://img.shields.io/badge/API_version-3.4.0-brightgreen)
+![Version](https://img.shields.io/badge/API_version-3.5.0-brightgreen)
 
 </div>
 
@@ -329,9 +329,15 @@ Chrome Alarm fires every N minutes (configured in options)
 |------|------|-------------|
 | Crisis Monitor | `/crisis` | Live local + global crisis detection with 4-tab UI: real-time status, history timeline, community ISP impact, and educational content about internet infrastructure |
 
+### New in v3.5
+| Page | Path | Description |
+|------|------|-------------|
+| Traceroute Path Analysis | (Diagnostics) | ASN + org + latency spike per hop via `/api/traceroute/enriched` |
+| IPv6 Check | (Diagnostics) | Dual-stack detection, IPv4 vs IPv6 latency comparison |
+
 ---
 
-## API Endpoints (v3.3)
+## API Endpoints (v3.5)
 
 ### Core
 | Method | Endpoint | Description |
@@ -414,6 +420,16 @@ Chrome Alarm fires every N minutes (configured in options)
 | `GET` | `/api/internet-crisis/local` | Local speed vs 7-day baseline — download, upload, ping, jitter, ISP |
 | `GET` | `/api/internet-crisis/history?days=7` | Crisis event history from DB (up to 30 days) |
 | `GET` | `/api/internet-crisis/community-impact?hours=24` | Aggregated ISP breakdown, issue types, unresolved outages |
+
+### New in v3.5 (LLM AI + Path Analysis + IPv6)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/insights/query?q=` | **Real LLM chatbot** — OpenAI GPT-4o-mini → Groq llama-3.1-8b → keyword fallback; measurement data injected as context |
+| `GET` | `/api/traceroute/enriched` | Traceroute with **ASN + org + country per hop**, latency spike detection, structured JSON output |
+| `GET` | `/api/ipv6-check` | Dual-stack detection — IPv4 vs IPv6 reachability + latency comparison + misconfiguration verdict |
+| `GET` | `/api/anomalies?sensitivity=0.05` | **Isolation Forest** multi-dimensional anomaly detection (download + upload + ping together) |
+| `GET` | `/api/openapi.json` | Always-available OpenAPI spec (even in production) for SDK generation |
+| `GET` | `/health` | Returns `{"status":"healthy","version":"3.5.0",...}` |
 
 ### Advanced Diagnostics
 | Method | Endpoint | Description |
@@ -547,6 +563,10 @@ fly secrets set \
   SECRET_KEY=$(openssl rand -hex 32) \
   ADMIN_API_KEY=$(openssl rand -hex 24)
 
+# LLM AI chatbot (v3.5) — primary + fallback
+fly secrets set OPENAI_API_KEY=sk-proj-...
+fly secrets set GROQ_API_KEY=gsk_...
+
 # Optional integrations
 fly secrets set TELEGRAM_BOT_TOKEN=...
 fly secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=...
@@ -584,6 +604,8 @@ fly tokens create deploy -x 999999h
 | `TURSO_AUTH_TOKEN` | ✅ | Turso authentication token |
 | `SECRET_KEY` | ✅ | Session secret (`openssl rand -hex 32`) |
 | `ADMIN_API_KEY` | ✅ | Key for DELETE endpoint |
+| `OPENAI_API_KEY` | — | OpenAI key for GPT-4o-mini AI chatbot (v3.5) |
+| `GROQ_API_KEY` | — | Groq key for llama-3.1-8b fallback chatbot (v3.5) |
 | `TELEGRAM_BOT_TOKEN` | — | Telegram bot for smart alerts |
 | `TWILIO_ACCOUNT_SID` | — | Twilio account SID for SMS alerts |
 | `TWILIO_AUTH_TOKEN` | — | Twilio auth token |
@@ -641,7 +663,8 @@ Internet-Stability-Tracker/
 │   │   │   ├── weekly_report.py            # NL weekly summary
 │   │   │   ├── throttle_detector.py        # 4-CDN throttle probe
 │   │   │   ├── cache_service.py            # Redis + in-memory fallback
-│   │   │   └── crisis_service.py           # crisis detection: 7 providers, IODA, history, community impact
+│   │   │   ├── crisis_service.py           # crisis detection: 7 providers, IODA, history, community impact
+│   │   │   └── llm_service.py              # LLM chatbot: OpenAI GPT-4o-mini → Groq → keyword fallback (v3.5)
 │   │   ├── scheduler.py                    # APScheduler background jobs
 │   │   └── main.py                         # FastAPI app, middleware, lifespan
 │   ├── Dockerfile
