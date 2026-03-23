@@ -137,8 +137,8 @@ export const getCongestionHeatmap = (days = 28) =>
 export const getComparison = () =>
   api.get('/comparison');
 
-export const getAnomalies = (hours = 168) =>
-  api.get(`/anomalies?hours=${hours}`);
+export const getAnomalies = (hours = 168, sensitivity = 0.05) =>
+  api.get('/anomalies', { params: { hours, sensitivity } });
 
 export const runTraceroute = (host = '8.8.8.8') =>
   api.get(`/traceroute?host=${encodeURIComponent(host)}`);
@@ -442,3 +442,18 @@ export const getCrisisHistory = (days = 7) =>
 
 export const getCrisisCommunityImpact = (hours = 24) =>
   api.get('/internet-crisis/community-impact', { params: { hours } });
+
+// ── v3.5: LLM AI, Traceroute ASN, IPv6, Anomaly (Isolation Forest) ──────────
+
+// AI chatbot (now LLM-powered: OpenAI → Groq → keyword fallback)
+export const askAI = (question) =>
+  api.get('/insights/query', { params: { q: question } });
+
+// Traceroute with ASN + org + latency spike labels
+export const getTracerouteEnriched = (host = '8.8.8.8') =>
+  api.get('/traceroute/enriched', { params: { host } });
+
+// IPv6 connectivity check + latency comparison
+export const getIPv6Check = () =>
+  api.get('/ipv6-check');
+
