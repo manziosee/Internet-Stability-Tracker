@@ -603,7 +603,20 @@ async def run_test_now(
         service = SpeedTestService()
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, service.measure_speeds)
-        return SpeedTestService._save(db, result, location, lat, lon, client_id)
+        saved = SpeedTestService._save(db, result, location, lat, lon, client_id)
+        # Push to all connected WebSocket clients immediately
+        asyncio.create_task(broadcast_measurement({
+            "id":             saved.id,
+            "timestamp":      saved.timestamp.isoformat(),
+            "download_speed": saved.download_speed,
+            "upload_speed":   saved.upload_speed,
+            "ping":           saved.ping,
+            "isp":            saved.isp,
+            "location":       saved.location,
+            "is_outage":      saved.is_outage,
+            "client_id":      client_id,
+        }))
+        return saved
     except Exception as exc:
         logger.error("test-now endpoint failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Speed test failed. Please try again later.")
@@ -1581,13 +1594,15 @@ def get_comparison(
     }
 
 
-# ─── Anomaly detection ───────────────────────────────────────────────────────
+# ─── Anomaly detection (Isolation Forest + Z-score fallback) ─────────────────
 
 @router.get("/anomalies", tags=["insights"],
-            summary="Speed anomaly detection",
-            description="Returns measurements that are >2 standard deviations from the mean (statistical outliers).")
+            summary="Speed anomaly detection (Isolation Forest)",
+            description="Uses scikit-learn Isolation Forest to detect multi-dimensional anomalies (download + upload + ping together). Falls back to ±2σ Z-score when <20 data points.")
 def get_anomalies(
     hours: int = Query(default=168, ge=1, le=720),
+    sensitivity: float = Query(default=0.05, ge=0.01, le=0.5,
+                               description="Isolation Forest contamination rate (0.01–0.5). Higher = more anomalies flagged."),
     client_id: Optional[str] = Depends(get_client_id),
     db: Session = Depends(get_db),
 ):
@@ -1599,36 +1614,60 @@ def get_anomalies(
 
     if len(rows) < 5:
         return {"anomalies": [], "total_checked": len(rows),
-                "message": "Need ≥5 data points for anomaly detection."}
+                "message": "Need ≥5 data points for anomaly detection.", "method": "none"}
 
-    dls  = [r.download_speed for r in rows if r.download_speed is not None]
-    mean = sum(dls) / len(dls)
-    var  = sum((x - mean) ** 2 for x in dls) / len(dls)
-    std  = _math.sqrt(var) if var > 0 else 0
+    dls   = [r.download_speed or 0 for r in rows]
+    uls   = [r.upload_speed   or 0 for r in rows]
+    pings = [r.ping           or 0 for r in rows]
+
+    anomaly_flags = [False] * len(rows)
+    method = "zscore"
+
+    # Isolation Forest (needs ≥20 samples to be meaningful)
+    if len(rows) >= 20:
+        try:
+            from sklearn.ensemble import IsolationForest
+            import numpy as _np
+            X = _np.array(list(zip(dls, uls, pings)))
+            clf = IsolationForest(contamination=sensitivity, random_state=42, n_estimators=100)
+            preds = clf.fit_predict(X)   # -1 = anomaly, 1 = normal
+            scores = clf.score_samples(X)
+            anomaly_flags = [p == -1 for p in preds]
+            method = "isolation_forest"
+        except ImportError:
+            pass  # scikit-learn not installed — fall through to z-score
+
+    # Z-score fallback
+    if method == "zscore":
+        mean = sum(dls) / len(dls)
+        var  = sum((x - mean) ** 2 for x in dls) / len(dls)
+        std  = _math.sqrt(var) if var > 0 else 1
+        anomaly_flags = [abs((dl - mean) / std) > 2.0 for dl in dls]
+        scores = [abs((dl - mean) / (std or 1)) for dl in dls]
 
     anomalies = []
-    for r in rows:
-        if r.download_speed is None or std == 0:
+    for i, (r, is_anomaly) in enumerate(zip(rows, anomaly_flags)):
+        if not is_anomaly:
             continue
-        z = (r.download_speed - mean) / std
-        if abs(z) > 2.0:
-            anomalies.append({
-                "id":             r.id,
-                "timestamp":      r.timestamp.isoformat(),
-                "download_speed": round(r.download_speed, 2),
-                "upload_speed":   round(r.upload_speed, 2) if r.upload_speed else None,
-                "ping":           round(r.ping, 1) if r.ping else None,
-                "z_score":        round(z, 2),
-                "type":           "spike" if z > 0 else "drop",
-                "is_outage":      r.is_outage,
-            })
+        anomalies.append({
+            "id":             r.id,
+            "timestamp":      r.timestamp.isoformat(),
+            "download_speed": round(r.download_speed, 2) if r.download_speed else None,
+            "upload_speed":   round(r.upload_speed,   2) if r.upload_speed   else None,
+            "ping":           round(r.ping,            1) if r.ping           else None,
+            "anomaly_score":  round(float(scores[i]),  4) if method == "isolation_forest" else None,
+            "type":           ("drop" if (r.download_speed or 0) < sum(dls)/len(dls) else "spike"),
+            "is_outage":      r.is_outage,
+        })
 
+    mean_dl = round(sum(dls) / len(dls), 2)
     return {
         "anomalies":      anomalies[:50],
         "total_checked":  len(rows),
-        "mean_mbps":      round(mean, 2),
-        "std_mbps":       round(std, 2),
-        "threshold":      "±2σ",
+        "anomaly_count":  len(anomalies),
+        "mean_mbps":      mean_dl,
+        "method":         method,
+        "contamination":  sensitivity,
         "hours_analyzed": hours,
     }
 
@@ -1705,10 +1744,204 @@ def run_traceroute(host: str = Query(default="8.8.8.8", description="Target host
 
     # If we get here, all methods failed
     raise HTTPException(
-        status_code=503, 
+        status_code=503,
         detail="Traceroute tools (traceroute/tracepath) are not available on this server. "
                "Install them with: apt-get install traceroute iputils-tracepath"
     )
+
+
+# ─── Traceroute with ASN enrichment ──────────────────────────────────────────
+
+def _validate_host(host: str) -> bool:
+    import re as _re2
+    if not host or len(host) > 253:
+        return False
+    HOSTNAME = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
+    IPV4    = r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+    return bool(_re2.match(HOSTNAME, host) or _re2.match(IPV4, host))
+
+
+def _parse_hops(raw: str):
+    """Parse traceroute output into structured hop list."""
+    import re as _re3
+    hops = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Match: "  1  192.168.1.1  0.456 ms  0.321 ms  0.289 ms"
+        m = _re3.match(
+            r'^\s*(\d+)\s+(\*|(?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]+)\s*(.*)',
+            line,
+        )
+        if not m:
+            continue
+        hop_num = int(m.group(1))
+        ip      = m.group(2)
+        rest    = m.group(3)
+
+        rtts = [float(x) for x in _re3.findall(r'([\d.]+)\s+ms', rest)]
+        avg_rtt = round(sum(rtts) / len(rtts), 2) if rtts else None
+
+        hops.append({
+            "hop":     hop_num,
+            "ip":      ip if ip != "*" else None,
+            "timeout": ip == "*",
+            "rtt_ms":  avg_rtt,
+            "rtts":    rtts,
+            "raw":     line,
+        })
+    return hops
+
+
+def _enrich_hops_with_asn(hops: list) -> list:
+    """Bulk-lookup ASN + org for each unique IP via ip-api.com (free, no key)."""
+    import httpx as _hx
+    unique_ips = list({h["ip"] for h in hops if h.get("ip") and not h.get("timeout")})
+    if not unique_ips:
+        return hops
+
+    asn_map: dict = {}
+    # ip-api.com supports batch POST up to 100 IPs
+    try:
+        resp = _hx.post(
+            "http://ip-api.com/batch",
+            json=[{"query": ip, "fields": "query,org,as,country,city,isp"} for ip in unique_ips],
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            for entry in resp.json():
+                asn_map[entry.get("query", "")] = {
+                    "asn":     entry.get("as", ""),
+                    "org":     entry.get("org", ""),
+                    "isp":     entry.get("isp", ""),
+                    "country": entry.get("country", ""),
+                    "city":    entry.get("city", ""),
+                }
+    except Exception as exc:
+        logger.warning("ASN batch lookup failed: %s", exc)
+
+    enriched = []
+    for h in hops:
+        info = asn_map.get(h.get("ip", ""), {})
+        enriched.append({**h, **info})
+    return enriched
+
+
+@router.get("/traceroute/enriched", tags=["network"],
+            summary="Traceroute with ASN + org labels",
+            description="Parses each hop, resolves ASN/org/country via ip-api.com batch, and flags where latency spikes — shows exactly where in the path slowdowns occur.")
+async def traceroute_enriched(
+    host: str = Query(default="8.8.8.8", description="Target hostname or IP"),
+):
+    import subprocess as _sp2
+    if not _validate_host(host):
+        raise HTTPException(status_code=400, detail="Invalid host.")
+
+    loop = asyncio.get_running_loop()
+
+    def _run():
+        for cmd in [
+            ["traceroute", "-n", "-m", "20", "-w", "2", host],
+            ["tracepath",  "-n", "-m", "20", host],
+        ]:
+            try:
+                res = _sp2.run(cmd, capture_output=True, text=True, timeout=35, check=False)
+                if res.stdout.strip():
+                    return res.stdout, cmd[0]
+            except (FileNotFoundError, _sp2.TimeoutExpired):
+                continue
+        return None, None
+
+    raw, tool = await loop.run_in_executor(None, _run)
+    if not raw:
+        raise HTTPException(status_code=503, detail="Traceroute unavailable on this server.")
+
+    hops = _parse_hops(raw)
+    hops = await loop.run_in_executor(None, _enrich_hops_with_asn, hops)
+
+    # Flag latency spikes (hop where RTT increases by >50ms vs previous)
+    prev_rtt = 0.0
+    for h in hops:
+        if h.get("rtt_ms") is not None:
+            h["latency_spike"] = (h["rtt_ms"] - prev_rtt) > 50 and prev_rtt > 0
+            prev_rtt = h["rtt_ms"]
+        else:
+            h["latency_spike"] = False
+
+    responding = [h for h in hops if not h.get("timeout")]
+    return {
+        "host":          host,
+        "tool":          tool,
+        "total_hops":    len(hops),
+        "responding":    len(responding),
+        "final_rtt_ms":  responding[-1]["rtt_ms"] if responding else None,
+        "hops":          hops,
+        "checked_at":    datetime.utcnow().isoformat(),
+    }
+
+
+# ─── IPv6 check ───────────────────────────────────────────────────────────────
+
+@router.get("/ipv6-check", tags=["network"],
+            summary="IPv6 connectivity check",
+            description="Detects whether your ISP provides IPv6, tests reachability to ipv6-test.com, and compares IPv4 vs IPv6 latency.")
+async def ipv6_check():
+    import httpx as _hx2
+    loop = asyncio.get_running_loop()
+
+    def _check():
+        results: dict = {"ipv4": {}, "ipv6": {}, "dual_stack": False}
+
+        # IPv4 check
+        try:
+            t0 = time.time()
+            r4 = _hx2.get("https://api4.my-ip.io/ip", timeout=5)
+            results["ipv4"] = {
+                "reachable": True,
+                "ip":        r4.text.strip(),
+                "latency_ms": round((time.time() - t0) * 1000),
+            }
+        except Exception:
+            results["ipv4"] = {"reachable": False, "ip": None, "latency_ms": None}
+
+        # IPv6 check
+        try:
+            t0 = time.time()
+            r6 = _hx2.get("https://api6.my-ip.io/ip", timeout=5)
+            ipv6_addr = r6.text.strip()
+            latency   = round((time.time() - t0) * 1000)
+            is_real   = ":" in ipv6_addr  # must be an actual IPv6 address
+            results["ipv6"] = {
+                "reachable": is_real,
+                "ip":        ipv6_addr if is_real else None,
+                "latency_ms": latency if is_real else None,
+            }
+        except Exception:
+            results["ipv6"] = {"reachable": False, "ip": None, "latency_ms": None}
+
+        results["dual_stack"] = results["ipv4"]["reachable"] and results["ipv6"]["reachable"]
+
+        # Compare latency
+        lat4 = results["ipv4"].get("latency_ms")
+        lat6 = results["ipv6"].get("latency_ms")
+        if lat4 and lat6:
+            diff = lat6 - lat4
+            if diff > 20:
+                results["verdict"] = f"IPv6 is {diff} ms slower than IPv4 — possible misconfiguration."
+            elif diff < -10:
+                results["verdict"] = f"IPv6 is {-diff} ms faster than IPv4 — great dual-stack setup."
+            else:
+                results["verdict"] = "IPv4 and IPv6 have similar latency."
+        elif not results["ipv6"]["reachable"]:
+            results["verdict"] = "No IPv6 connectivity detected — your ISP may not support it yet."
+        else:
+            results["verdict"] = "IPv6 reachable."
+
+        results["checked_at"] = datetime.utcnow().isoformat()
+        return results
+
+    return await loop.run_in_executor(None, _check)
 
 
 # ─── Shareable report snapshots ───────────────────────────────────────────────
@@ -3187,8 +3420,27 @@ def delete_webhook(
     return {"message": "Webhook deleted"}
 
 
+async def _fire_webhook_with_retry(url: str, payload: dict, max_retries: int = 3) -> dict:
+    """Fire a webhook with exponential backoff retry (1s, 2s, 4s)."""
+    import httpx as _hx3
+    import asyncio as _aio
+    last_error = ""
+    for attempt in range(max_retries):
+        try:
+            async with _hx3.AsyncClient(timeout=10) as c:
+                r = await c.post(url, json=payload)
+                if r.status_code < 300:
+                    return {"success": True, "status_code": r.status_code, "attempts": attempt + 1}
+                last_error = f"HTTP {r.status_code}"
+        except Exception as exc:
+            last_error = str(exc)
+        if attempt < max_retries - 1:
+            await _aio.sleep(2 ** attempt)  # 1s, 2s, 4s
+    return {"success": False, "error": last_error, "attempts": max_retries}
+
+
 @router.post("/webhooks/test/{webhook_id}", tags=["webhooks"],
-             summary="Send a test payload to a webhook")
+             summary="Send a test payload to a webhook (with retry)")
 async def test_webhook(
     webhook_id: int,
     db: Session = Depends(get_db),
@@ -3197,22 +3449,16 @@ async def test_webhook(
     if not client_id:
         raise HTTPException(status_code=400, detail="Client ID required")
     from ..models.measurement import Webhook
-    import httpx as _httpx
     hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.client_id == client_id).first()
     if not hook:
         raise HTTPException(status_code=404, detail="Webhook not found")
     payload = {
-        "event": "test",
-        "source": "internet-stability-tracker",
+        "event":     "test",
+        "source":    "internet-stability-tracker",
         "timestamp": datetime.utcnow().isoformat(),
-        "data": {"message": "Webhook test from Internet Stability Tracker"},
+        "data":      {"message": "Webhook test from Internet Stability Tracker"},
     }
-    try:
-        async with _httpx.AsyncClient(timeout=10) as client_http:
-            r = await client_http.post(hook.url, json=payload)
-            return {"success": r.status_code < 300, "status_code": r.status_code}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    return await _fire_webhook_with_retry(hook.url, payload)
 
 
 # ─── Advanced Diagnostics ────────────────────────────────────────────────────
@@ -3314,17 +3560,20 @@ def detect_anomalies_advanced(
 
 
 @router.get("/insights/query", tags=["insights"],
-            summary="Natural language query")
-def answer_query(
-    q: str = Query(..., description="Natural language question"),
+            summary="Natural language query (LLM-powered)",
+            description="Ask any question about your network in plain English. Uses OpenAI GPT-4o-mini (Groq llama-3.1-8b as fallback) with your real measurement data as context.")
+async def answer_query(
+    q: str = Query(..., description="Natural language question about your network"),
     db: Session = Depends(get_db),
     client_id: Optional[str] = Depends(get_client_id),
 ):
     if not client_id:
         raise HTTPException(status_code=400, detail="Client ID required")
-    
-    service = AIInsightsService(db)
-    return service.answer_natural_query(client_id, q)
+
+    from ..services.llm_service import ask_llm
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, ask_llm, db, client_id, q)
+    return result
 
 
 # ─── Network Security ─────────────────────────────────────────────────────────
