@@ -459,25 +459,6 @@ crisis_logs             — detected crisis events: local+global severity, affec
 
 ---
 
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| React 18 + CRA | Frontend SPA | 30+ pages, MUI v6, Recharts, Leaflet |
-| FastAPI 0.104 | REST API + WebSocket | 80+ endpoints, Pydantic v2, SQLAlchemy 2 |
-| Turso (libSQL) | Cloud database | Edge SQLite, per-device data isolation |
-| scikit-learn | ML predictions | LinearRegression speed forecasting |
-| APScheduler | Background jobs | Hourly aggregation, weekly report, alert eval |
-| Redis / memory | Cache | TTL cache with in-memory fallback |
-| Fly.io | Backend hosting | lhr region, 1 machine always warm, HTTPS |
-| Vercel | Frontend hosting | CDN, auto-deploy from GitHub |
-| Chrome MV3 | Browser extension | Auto-test, popup dashboard, notifications |
-| Docker | Containerisation | Multi-stage build, non-root user |
-| GitHub Actions | CI/CD | Deploy on push to `main` |
-| Sentry | Error tracking | Opt-in, activates on `SENTRY_DSN` |
-
----
-
 ## Quick Start — Local Dev
 
 ```bash
