@@ -1,118 +1,194 @@
-"""Cache Service — Redis when available, in-memory TTL fallback otherwise"""
+"""Cache Service — three-tier: Go LRU agent → Redis → in-memory TTL dict
+
+Tier 1  Go agent  (http://127.0.0.1:8002) — proper LRU eviction, shared
+                  across all uvicorn workers, zero external deps.
+Tier 2  Redis     (optional) — distributed, survives process restarts.
+Tier 3  In-memory — always-available fallback, per-process dict.
+
+All public methods are async so call sites require no changes.
+"""
 import json
+import logging
 import time
 import threading
-from typing import Optional, Any, Dict
+from typing import Any, Dict, Optional
+
+import httpx
+
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 try:
-    import redis.asyncio as redis
-    REDIS_AVAILABLE = True
+    import redis.asyncio as _redis
+    _REDIS_OK = True
 except ImportError:
-    REDIS_AVAILABLE = False
+    _REDIS_OK = False
 
 
-# ── In-memory fallback cache ────────────────────────────────────────────────
-# Thread-safe dict: key → {"value": ..., "expires_at": float}
+# ── Tier 3: in-memory TTL dict ────────────────────────────────────────────────
+
 _mem: Dict[str, dict] = {}
 _mem_lock = threading.Lock()
 
 
 def _mem_get(key: str) -> Optional[Any]:
     with _mem_lock:
-        entry = _mem.get(key)
-        if not entry:
+        e = _mem.get(key)
+        if not e:
             return None
-        if entry["expires_at"] < time.monotonic():
+        if e["x"] < time.monotonic():
             del _mem[key]
             return None
-        return entry["value"]
+        return e["v"]
 
 
 def _mem_set(key: str, value: Any, ttl: int) -> None:
     with _mem_lock:
-        _mem[key] = {"value": value, "expires_at": time.monotonic() + ttl}
+        _mem[key] = {"v": value, "x": time.monotonic() + ttl}
 
 
-def _mem_delete(key: str) -> None:
+def _mem_del(key: str) -> None:
     with _mem_lock:
         _mem.pop(key, None)
 
 
-def _mem_clear_pattern(pattern: str) -> int:
-    prefix = pattern.rstrip("*")
+def _mem_clear_prefix(prefix: str) -> int:
+    pfx = prefix.rstrip("*")
     with _mem_lock:
-        keys = [k for k in list(_mem.keys()) if k.startswith(prefix)]
+        keys = [k for k in list(_mem) if k.startswith(pfx)]
         for k in keys:
             del _mem[k]
     return len(keys)
 
 
-class CacheService:
-    """Two-tier cache: Redis (if configured) → in-memory TTL fallback.
-    All methods are async so call sites don't need to change."""
+# ── Tier 1: Go agent helpers (sync HTTP — httpx sync client) ──────────────────
 
-    def __init__(self):
-        self.redis_client = None
-        if REDIS_AVAILABLE and settings.REDIS_URL:
+def _go_headers() -> dict:
+    h = {}
+    if settings.AGENT_SERVICE_TOKEN:
+        h["X-Service-Token"] = settings.AGENT_SERVICE_TOKEN
+    return h
+
+
+def _go_get(key: str) -> Optional[Any]:
+    if not settings.AGENT_URL:
+        return None
+    try:
+        r = httpx.get(
+            f"{settings.AGENT_URL}/cache/{key}",
+            headers=_go_headers(),
+            timeout=0.5,
+        )
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+
+def _go_set(key: str, value: Any, ttl: int) -> bool:
+    if not settings.AGENT_URL:
+        return False
+    try:
+        r = httpx.post(
+            f"{settings.AGENT_URL}/cache",
+            json={"key": key, "value": value, "ttl_seconds": ttl},
+            headers=_go_headers(),
+            timeout=0.5,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def _go_del(key: str) -> None:
+    if not settings.AGENT_URL:
+        return
+    try:
+        httpx.delete(
+            f"{settings.AGENT_URL}/cache/{key}",
+            headers=_go_headers(),
+            timeout=0.5,
+        )
+    except Exception:
+        pass
+
+
+# ── Main CacheService ─────────────────────────────────────────────────────────
+
+class CacheService:
+    """Three-tier cache: Go agent LRU → Redis → in-memory fallback."""
+
+    def __init__(self) -> None:
+        self._redis = None
+        if _REDIS_OK and settings.REDIS_URL:
             try:
-                self.redis_client = redis.from_url(
+                self._redis = _redis.from_url(
                     settings.REDIS_URL,
                     encoding="utf-8",
                     decode_responses=True,
                 )
             except Exception:
-                self.redis_client = None
+                self._redis = None
 
     async def get(self, key: str) -> Optional[Any]:
-        if self.redis_client:
+        # 1. Go agent LRU
+        val = _go_get(key)
+        if val is not None:
+            return val
+        # 2. Redis
+        if self._redis:
             try:
-                raw = await self.redis_client.get(key)
+                raw = await self._redis.get(key)
                 if raw:
                     return json.loads(raw)
             except Exception:
                 pass
-        # Fallback to in-memory
+        # 3. In-memory
         return _mem_get(key)
 
     async def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
-        if self.redis_client:
+        # Write through all tiers so warm-up is instant after a restart
+        _go_set(key, value, ttl_seconds)
+        if self._redis:
             try:
-                await self.redis_client.setex(key, ttl_seconds, json.dumps(value))
-                return True
+                await self._redis.setex(key, ttl_seconds, json.dumps(value))
             except Exception:
                 pass
-        # Fallback to in-memory
         _mem_set(key, value, ttl_seconds)
         return True
 
     async def delete(self, key: str) -> bool:
-        if self.redis_client:
+        _go_del(key)
+        if self._redis:
             try:
-                await self.redis_client.delete(key)
-                return True
+                await self._redis.delete(key)
             except Exception:
                 pass
-        _mem_delete(key)
+        _mem_del(key)
         return True
 
     async def clear_pattern(self, pattern: str) -> int:
-        if self.redis_client:
+        if self._redis:
             try:
-                keys = [k async for k in self.redis_client.scan_iter(match=pattern)]
+                keys = [k async for k in self._redis.scan_iter(match=pattern)]
                 if keys:
-                    return await self.redis_client.delete(*keys)
-                return 0
+                    await self._redis.delete(*keys)
             except Exception:
                 pass
-        return _mem_clear_pattern(pattern)
+        return _mem_clear_prefix(pattern)
 
     def cache_key(self, prefix: str, *args) -> str:
         return ":".join([prefix] + [str(a) for a in args])
 
     @property
     def backend(self) -> str:
-        return "redis" if self.redis_client else "memory"
+        if settings.AGENT_URL:
+            return "go-lru"
+        if self._redis:
+            return "redis"
+        return "memory"
 
 
 # Global singleton

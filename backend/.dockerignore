@@ -16,3 +16,5 @@ htmlcov
 .coverage
 *.log
 alembic/versions/*.pyc
+# Rust build artifacts — only the compiled binary is copied into the image
+rust-probe/target
