@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # ── Redis (optional caching) ────────────────────────────────────────────
     REDIS_URL: Optional[str] = None             # redis://localhost:6379/0
 
+    # ── Rust probe sidecar ──────────────────────────────────────────────────
+    # Set to empty string to disable (Python falls back to subprocess probes)
+    PROBE_URL: str = "http://127.0.0.1:8001"    # internal Rust probe service
+
+    # ── Go agent sidecar ────────────────────────────────────────────────────
+    # Set to empty string to disable (Python falls back to in-memory cache)
+    AGENT_URL: str = "http://127.0.0.1:8002"    # internal Go agent
+    # Shared secret — must match AGENT_SERVICE_TOKEN set on the Go agent
+    AGENT_SERVICE_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
 

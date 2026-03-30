@@ -2030,9 +2030,39 @@ _ws_connections: list = []
 
 @router.websocket("/ws/live")
 async def websocket_live(websocket: WebSocket):
-    """Real-time WebSocket — heartbeat every 10s + broadcasts new measurements."""
+    """Real-time WebSocket — heartbeat every 10 s + broadcasts new measurements.
+
+    Subscribes to the Go agent's SSE stream so events from ALL uvicorn workers
+    are forwarded to this client (cross-worker broadcast via Go hub).
+    """
     await websocket.accept()
     _ws_connections.append(websocket)
+
+    from ..core.config import settings
+
+    async def _sse_forwarder():
+        """Background task: stream Go hub events → this WS client."""
+        if not settings.AGENT_URL:
+            return
+        headers = {}
+        if settings.AGENT_SERVICE_TOKEN:
+            headers["X-Service-Token"] = settings.AGENT_SERVICE_TOKEN
+        try:
+            async with httpx.AsyncClient(timeout=None) as ac:
+                async with ac.stream(
+                    "GET",
+                    f"{settings.AGENT_URL}/events/subscribe",
+                    headers=headers,
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data:"):
+                            data = line[5:].strip()
+                            if data:
+                                await websocket.send_text(data)
+        except Exception:
+            pass  # Go agent gone or WS closed — exit silently
+
+    sse_task = asyncio.create_task(_sse_forwarder())
     try:
         while True:
             try:
@@ -2048,15 +2078,44 @@ async def websocket_live(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        sse_task.cancel()
         if websocket in _ws_connections:
             _ws_connections.remove(websocket)
 
 
 async def broadcast_measurement(measurement_dict: dict):
-    """Push a new measurement to all connected WebSocket clients."""
+    """Push a new measurement to all connected WebSocket clients.
+
+    Two-phase broadcast:
+    1. Push to Go agent hub (POST /events/push) so ALL uvicorn workers'
+       WebSocket clients receive the event — solves the multi-worker
+       broadcast problem where worker-1 measurements never reached
+       clients connected to worker-2.
+    2. Also push directly to WebSocket connections in *this* worker
+       so clients already connected here get the message immediately
+       without waiting for the SSE round-trip.
+    """
+    payload = _json_ws.dumps({"type": "measurement", "data": measurement_dict})
+
+    # ── 1. Go agent hub (cross-worker broadcast) ──────────────────────────
+    from ..core.config import settings
+    if settings.AGENT_URL:
+        try:
+            headers = {}
+            if settings.AGENT_SERVICE_TOKEN:
+                headers["X-Service-Token"] = settings.AGENT_SERVICE_TOKEN
+            async with httpx.AsyncClient(timeout=0.5) as _ac:
+                await _ac.post(
+                    f"{settings.AGENT_URL}/events/push",
+                    content=payload,
+                    headers={**headers, "Content-Type": "application/json"},
+                )
+        except Exception:
+            pass  # Go agent not available — local WS still works below
+
+    # ── 2. Direct push to this worker's local WS connections ─────────────
     if not _ws_connections:
         return
-    payload = _json_ws.dumps({"type": "measurement", "data": measurement_dict})
     dead = []
     for ws in _ws_connections:
         try:
